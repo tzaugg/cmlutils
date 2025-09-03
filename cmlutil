@@ -1,0 +1,2 @@
+#!/bin/bash
+"/Users/tzaugg/Cursor/cmlutils/cmlutils-main/cmlutils-env/bin/python" -m cmlutils.cli_entrypoint "$@"

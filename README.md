@@ -175,6 +175,44 @@ INFO: Login succeeded
 
 ## Installation
 
+### From Zip File (Recommended for Client Deployments)
+
+If you received cmlutils as a zip file, this is the easiest installation method:
+
+1. **Extract the zip file:**
+```bash
+unzip cmlutils-main.zip
+cd cmlutils-main
+```
+
+2. **Run the automated installer:**
+```bash
+# Option 1: Use the shell script
+./install.sh
+
+# Option 2: Use Python directly  
+python3 install.py
+```
+
+The installer will:
+- Check Python 3.10+ compatibility
+- Create a virtual environment
+- Install all dependencies
+- Create the `cmlutil` command
+- Test the installation
+
+3. **Add to PATH (optional):**
+```bash
+export PATH=$(pwd):$PATH
+```
+
+4. **Test installation:**
+```bash
+./cmlutil --help
+```
+
+> 📖 **For detailed installation instructions and troubleshooting, see [INSTALL.md](INSTALL.md)**
+
 ### Development mode
 1. Clone the repo and run `python3 -m pip install --editable .` .
 2. Check if the command `cmlutil` is running or not.
