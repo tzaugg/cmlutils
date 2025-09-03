@@ -185,7 +185,7 @@ def project_export_cmd(project_name, verbose):
         start_time = time.time()
         pexport.transfer_project_files(log_filedir=log_filedir)
         exported_data = pexport.dump_project_and_related_metadata()
-        print("\033[32m✔ Export of Project {} Successful \033[0m".format(project_name))
+        print("\033[32mSUCCESS: Export of Project {} Successful \033[0m".format(project_name))
         print(
             "\033[34m\tExported {} Jobs {}\033[0m".format(
                 exported_data.get("total_job"), exported_data.get("job_name_list")
@@ -338,7 +338,7 @@ def project_import_cmd(project_name, verify, verbose):
         import_data = dict()
         import_data["project_name"] = project_name
         import_data = pimport.import_metadata(project_id=project_id)
-        print("\033[32m✔ Import of Project {} Successful \033[0m".format(project_name))
+        print("\033[32mSUCCESS: Import of Project {} Successful \033[0m".format(project_name))
         print(
             "\033[34m\tImported {} Jobs {}\033[0m".format(
                 import_data.get("total_job"), import_data.get("job_name_list")

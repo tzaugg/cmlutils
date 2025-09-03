@@ -79,14 +79,14 @@ DEBUG: Starting model creation process for project_id: 9k62-9az5-7c1t-rasa
 DEBUG: Found 0 models to import
 INFO: Skipping the already existing application CDV 1 with same subdomain- cdvapp
 INFO: Models are not present in the project CDV.
-✔ Import of Project CDV Successful
+SUCCESS: Import of Project CDV Successful
 ```
 
 ### Success Output Examples
 
 #### Export Success
 ```
-✔ Export of Project CDV Successful 
+SUCCESS: Export of Project CDV Successful 
         Exported 0 Jobs []
         Exported 0 Models []
         Exported 1 Applications ['CDV 1']
@@ -95,7 +95,7 @@ CDV Export took 27.64 seconds
 
 #### Import Success
 ```
-✔ Import of Project CDV Successful 
+SUCCESS: Import of Project CDV Successful 
         Imported 0 Jobs []
         Imported 0 Models []
         Imported 1 Applications ['CDV 1']
@@ -157,7 +157,7 @@ apiv1_key=your_api_key_here
 
 #### Security Warning
 
-⚠️ **Important**: Setting `ca_path=False` disables SSL certificate verification, which reduces security. This should only be used in:
+**Important**: Setting `ca_path=False` disables SSL certificate verification, which reduces security. This should only be used in:
 - Testing/development environments
 - Internal networks with self-signed certificates
 - Temporary troubleshooting scenarios

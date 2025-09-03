@@ -145,19 +145,19 @@ def main():
         else:
             print("  No configuration files found (this is normal for new installations)")
     else:
-        print(f"ℹ Configuration directory not found: {config_dir} (will be created when needed)")
+        print(f"INFO: Configuration directory not found: {config_dir} (will be created when needed)")
     
     # Summary
     print("\n" + "=" * 60)
     if all_checks_passed:
-        print("✅ All verification checks PASSED!")
+        print("SUCCESS: All verification checks PASSED!")
         print("CMLUtils is properly installed and ready to use.")
         print(f"\nTo use cmlutils:")
         print(f"  • Run: {wrapper_script}")
         print(f"  • Or add to PATH: export PATH={current_dir}:$PATH")
         print(f"  • Then use: cmlutil --help")
     else:
-        print("❌ Some verification checks FAILED!")
+        print("ERROR: Some verification checks FAILED!")
         print("Please review the errors above and retry installation.")
         return 1
     

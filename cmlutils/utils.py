@@ -394,6 +394,6 @@ def compare_metadata(
 
 def update_verification_status(data_diff, message):
     if data_diff:
-        logging.info("\033[31m❌ {} Not Successful\033[0m".format(message))
+        logging.info("\033[31mERROR: {} Not Successful\033[0m".format(message))
     else:
-        logging.info("\033[32m✔ {} Successful \033[0m".format(message))
+        logging.info("\033[32mSUCCESS: {} Successful \033[0m".format(message))
