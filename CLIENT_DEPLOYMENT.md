@@ -16,12 +16,6 @@ This guide is for clients who have received the CMLUtils package as a zip file a
    ```bash
    # For Unix/Linux/macOS
    ./install.sh
-   
-   # For Windows
-   install.bat
-   
-   # Or use Python directly
-   python3 install.py
    ```
 
    **Option B: Manual**
@@ -140,9 +134,7 @@ For technical support:
 
 ## Files in This Package
 
-- `install.py` - Automated Python installation script
-- `install.sh` - Unix/Linux installation script  
-- `install.bat` - Windows installation script
+- `install.sh` - Unix/Linux installation script
 - `verify_installation.py` - Installation verification script
 - `setup.py` - Package setup configuration
 - `requirements.txt` - Python dependencies

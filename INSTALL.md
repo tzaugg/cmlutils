@@ -16,7 +16,7 @@ cd cmlutils-main
 Run the automated installation script:
 
 ```bash
-python3 install.py
+./install.sh
 ```
 
 This script will:

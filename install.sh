@@ -31,21 +31,34 @@ if [ ! -f "setup.py" ]; then
     exit 1
 fi
 
-echo "Running Python installation script..."
-python3 install.py
+echo "Starting installation..."
 
-if [ $? -eq 0 ]; then
-    echo ""
-    echo "Installation completed successfully!"
-    echo ""
-    echo "To use cmlutil, you can:"
-    echo "  1. Run: ./cmlutil --help"
-    echo "  2. Add to PATH: export PATH=$(pwd):\$PATH"
-    echo "  3. Make PATH permanent: echo 'export PATH=$(pwd):\$PATH' >> ~/.bashrc"
-    echo ""
-    echo "To test the installation:"
-    echo "  ./cmlutil --help"
-else
-    echo "Installation failed. Please check the output above for details."
-    exit 1
-fi
+# Create virtual environment
+echo "Creating virtual environment..."
+python3 -m venv cmlutils-env
+
+# Activate virtual environment and install
+echo "Installing cmlutils..."
+source cmlutils-env/bin/activate
+pip install --upgrade pip
+pip install -e .
+
+# Create wrapper script
+echo "Creating cmlutil wrapper script..."
+cat > cmlutil << 'EOF'
+#!/bin/bash
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+"$SCRIPT_DIR/cmlutils-env/bin/python" -m cmlutils.cli_entrypoint "$@"
+EOF
+chmod +x cmlutil
+
+echo ""
+echo "Installation completed successfully!"
+echo ""
+echo "To use cmlutil, you can:"
+echo "  1. Run: ./cmlutil --help"
+echo "  2. Add to PATH: export PATH=$(pwd):\$PATH"
+echo "  3. Make PATH permanent: echo 'export PATH=$(pwd):\$PATH' >> ~/.bashrc"
+echo ""
+echo "To test the installation:"
+echo "  ./cmlutil --help"

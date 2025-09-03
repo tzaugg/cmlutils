@@ -187,11 +187,7 @@ cd cmlutils-main
 
 2. **Run the automated installer:**
 ```bash
-# Option 1: Use the shell script
 ./install.sh
-
-# Option 2: Use Python directly  
-python3 install.py
 ```
 
 The installer will:
