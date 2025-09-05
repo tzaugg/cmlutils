@@ -33,7 +33,7 @@ setuptools.setup(
     ],
     install_requires=get_packages_from_requierements_file(),
     packages=setuptools.find_packages(),
-    python_requires=">=3.10",
+    python_requires=">=3.9",
     entry_points={
         "console_scripts": [
             "cmlutil = cmlutils.cli_entrypoint:main",

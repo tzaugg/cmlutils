@@ -1,2 +1,4 @@
 #!/bin/bash
-"/Users/tzaugg/Cursor/cmlutils/cmlutils-main/cmlutils-env/bin/python" -m cmlutils.cli_entrypoint "$@"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+export PYTHONPATH="$SCRIPT_DIR:$PYTHONPATH"
+exec "$SCRIPT_DIR/cmlutils-env/bin/python" -m cmlutils.cli_entrypoint "$@"

@@ -191,7 +191,7 @@ cd cmlutils-main
 ```
 
 The installer will:
-- Check Python 3.10+ compatibility
+- Check Python 3.9+ compatibility
 - Create a virtual environment
 - Install all dependencies
 - Create the `cmlutil` command
