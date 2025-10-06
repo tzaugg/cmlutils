@@ -2070,8 +2070,9 @@ class ProjectImporter(BaseWorkspaceInteractor):
                                     # Try first available runtime if no match found
                                     if runtime_list and "runtimes" in runtime_list and runtime_list["runtimes"]:
                                         first_runtime = runtime_list["runtimes"][0]
+                                        # V2 API returns snake_case fields
                                         app_metadata["runtime_identifier"] = (
-                                            first_runtime.get("imageIdentifier") or first_runtime.get("fullVersion")
+                                            first_runtime.get("image_identifier") or first_runtime.get("full_version")
                                         )
                                         logging.info(
                                             f"Using first available runtime for app {app_metadata.get('name')}: {app_metadata['runtime_identifier']}"
@@ -2082,9 +2083,9 @@ class ProjectImporter(BaseWorkspaceInteractor):
                                 if runtime_list and "runtimes" in runtime_list and runtime_list["runtimes"]:
                                     first_runtime = runtime_list["runtimes"][0]
                                     logging.info(f"First runtime available: {json.dumps(first_runtime, indent=2)}")
-                                    # Use the first available runtime - prefer imageIdentifier (camelCase!), fallback to fullVersion
+                                    # Use the first available runtime - V2 API returns snake_case fields
                                     app_metadata["runtime_identifier"] = (
-                                        first_runtime.get("imageIdentifier") or first_runtime.get("fullVersion")
+                                        first_runtime.get("image_identifier") or first_runtime.get("full_version")
                                     )
                                     logging.info(
                                         f"Using first available runtime (no runtime fields) for app {app_metadata.get('name')}: {app_metadata['runtime_identifier']}"
