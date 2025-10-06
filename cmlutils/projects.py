@@ -353,20 +353,6 @@ class ProjectExporter(BaseWorkspaceInteractor):
         super().__init__(host, username, project_name, api_key, ca_path, project_slug)
         self.metrics_data = dict()
 
-    # Get CDSW project info using API v1
-    def get_project_infov1(self):
-        endpoint = Template(ApiV1Endpoints.PROJECT.value).substitute(
-            username=self.username, project_name=self.project_slug
-        )
-        response = call_api_v1(
-            host=self.host,
-            endpoint=endpoint,
-            method="GET",
-            api_key=self.api_key,
-            ca_path=self.ca_path,
-        )
-        return response.json()
-
     # Get CDSW project info using API v2
     def get_project_infov2(self, project_id: str = None):
         if project_id is None:
@@ -488,24 +474,6 @@ class ProjectExporter(BaseWorkspaceInteractor):
                         )
         return None, None, None
 
-    # Get all models list info using API v1
-    def get_models_listv1(self, project_id: int):
-        endpoint = ApiV1Endpoints.MODELS_LIST.value
-        json_data = {
-            "projectId": project_id,
-            "latestModelDeployment": True,
-            "latestModelBuild": True,
-        }
-        response = call_api_v1(
-            host=self.host,
-            endpoint=endpoint,
-            method="POST",
-            api_key=self.api_key,
-            json_data=json_data,
-            ca_path=self.ca_path,
-        )
-        return response.json()
-
     # Get all models list info using API v2
     def get_models_listv2(self, project_id: str):
         endpoint = Template(ApiV2Endpoints.MODELS_LIST.value).substitute(
@@ -520,20 +488,6 @@ class ProjectExporter(BaseWorkspaceInteractor):
         )
         return response.json().get("models", [])
 
-    # Get all jobs list info using API v1
-    def get_jobs_listv1(self):
-        endpoint = Template(ApiV1Endpoints.JOBS_LIST.value).substitute(
-            username=self.username, project_name=self.project_slug
-        )
-        response = call_api_v1(
-            host=self.host,
-            endpoint=endpoint,
-            method="GET",
-            api_key=self.api_key,
-            ca_path=self.ca_path,
-        )
-        return response.json()
-
     # Get all jobs list info using API v2
     def get_jobs_listv2(self, project_id: str):
         endpoint = Template(ApiV2Endpoints.JOBS_LIST.value).substitute(
@@ -547,20 +501,6 @@ class ProjectExporter(BaseWorkspaceInteractor):
             ca_path=self.ca_path,
         )
         return response.json().get("jobs", [])
-
-    # Get all applications list info using API v1
-    def get_app_listv1(self):
-        endpoint = Template(ApiV1Endpoints.APPS_LIST.value).substitute(
-            username=self.username, project_name=self.project_slug
-        )
-        response = call_api_v1(
-            host=self.host,
-            endpoint=endpoint,
-            method="GET",
-            api_key=self.api_key,
-            ca_path=self.ca_path,
-        )
-        return response.json()
 
     # Get all applications list info using API v2
     def get_app_listv2(self, project_id: str):
@@ -722,17 +662,32 @@ class ProjectExporter(BaseWorkspaceInteractor):
         else:
             logging.debug("No original owner cached, skipping restoration")
 
-    # Get all runtimes using API v1
+    # Get all runtimes using API v2
     def get_all_runtimes(self):
-        endpoint = ApiV1Endpoints.RUNTIMES.value
-        response = call_api_v1(
-            host=self.host,
-            endpoint=endpoint,
-            method="GET",
-            api_key=self.api_key,
-            ca_path=self.ca_path,
-        )
-        return response.json()
+        """Get all runtimes using V2 API with pagination"""
+        all_runtimes = []
+        page_token = ""
+        
+        while True:
+            endpoint = Template(ApiV2Endpoints.RUNTIMES.value).substitute(
+                page_size=1000, page_token=page_token
+            )
+            response = call_api_v2(
+                host=self.host,
+                endpoint=endpoint,
+                method="GET",
+                user_token=self.apiv2_key,
+                ca_path=self.ca_path,
+            )
+            result = response.json()
+            all_runtimes.extend(result.get("runtimes", []))
+            
+            # Check if there are more pages
+            page_token = result.get("next_page_token", "")
+            if not page_token:
+                break
+        
+        return {"runtimes": all_runtimes}
 
     def terminate_ssh_session(self):
         logging.info("Terminating ssh connection.")
@@ -1591,17 +1546,32 @@ class ProjectImporter(BaseWorkspaceInteractor):
         )
         return
 
-    # Get all runtimes using API v1
+    # Get all runtimes using API v2
     def get_all_runtimes(self):
-        endpoint = ApiV1Endpoints.RUNTIMES.value
-        response = call_api_v1(
-            host=self.host,
-            endpoint=endpoint,
-            method="GET",
-            api_key=self.api_key,
-            ca_path=self.ca_path,
-        )
-        return response.json()
+        """Get all runtimes using V2 API with pagination"""
+        all_runtimes = []
+        page_token = ""
+        
+        while True:
+            endpoint = Template(ApiV2Endpoints.RUNTIMES.value).substitute(
+                page_size=1000, page_token=page_token
+            )
+            response = call_api_v2(
+                host=self.host,
+                endpoint=endpoint,
+                method="GET",
+                user_token=self.apiv2_key,
+                ca_path=self.ca_path,
+            )
+            result = response.json()
+            all_runtimes.extend(result.get("runtimes", []))
+            
+            # Check if there are more pages
+            page_token = result.get("next_page_token", "")
+            if not page_token:
+                break
+        
+        return {"runtimes": all_runtimes}
 
     # Get spark runtime addons using API v2
     def get_spark_runtimeaddons(self):

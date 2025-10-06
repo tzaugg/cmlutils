@@ -224,11 +224,13 @@ Example configuration:
 url=https://your-cml-workspace.com
 ca_path=False
 username=admin
-apiv1_key=your_api_key_here
+apiv2_key=your_v2_api_key_here
+# For backward compatibility, you can also include:
+# apiv1_key=your_v1_api_key_here
 
 [project_name]
 username=admin
-apiv1_key=your_api_key_here
+apiv2_key=your_v2_api_key_here
 source_dir=/path/to/exports
 output_dir=/tmp/cmlutils-logs
 ```

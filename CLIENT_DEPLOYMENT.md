@@ -78,11 +78,12 @@ After installation, configure CMLUtils by creating configuration files in `~/.cm
 url=https://your-source-cml-workspace.com
 ca_path=False
 username=your_username
-apiv1_key=your_api_key
+apiv2_key=your_v2_api_key
+# For backward compatibility: apiv1_key=your_v1_api_key
 
 [project_name]
 username=your_username
-apiv1_key=your_api_key
+apiv2_key=your_v2_api_key
 source_dir=/path/to/export/directory
 output_dir=/tmp/cmlutils-export-logs
 ```
@@ -93,11 +94,12 @@ output_dir=/tmp/cmlutils-export-logs
 url=https://your-target-cml-workspace.com
 ca_path=False
 username=your_username
-apiv1_key=your_api_key
+apiv2_key=your_v2_api_key
+# For backward compatibility: apiv1_key=your_v1_api_key
 
 [project_name]
 username=your_username
-apiv1_key=your_api_key
+apiv2_key=your_v2_api_key
 source_dir=/path/to/import/directory
 output_dir=/tmp/cmlutils-import-logs
 ```
