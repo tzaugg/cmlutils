@@ -324,12 +324,13 @@ def project_import_cmd(project_name, verify, verbose):
                 "Project %s already exist in the target workspace. Retrying the import won't update existing project settings or artifacts. Only missing artifacts will be migrated, However the project files will be synced via rsync.",
                 project_metadata.get("name", ""),
             )
-        if "team_name" in project_metadata:
-            username = project_metadata["team_name"]
+        # Don't override username with team_name - use API key owner's username for owner change logic
+        # if "team_name" in project_metadata:
+        #     username = project_metadata["team_name"]
         creator_username, project_slug = p.get_creator_username()
         pimport = ProjectImporter(
             host=url,
-            username=username,
+            username=username,  # Use API key owner's username from config
             project_name=project_name,
             api_key=apiv1_key,
             top_level_dir=source_directory,
@@ -810,12 +811,13 @@ def project_verify_cmd(project_name, verbose):
             )
             project_metadata = read_json_file(project_filepath)
 
-            if "team_name" in project_metadata:
-                import_username = project_metadata["team_name"]
+            # Don't override username with team_name - use API key owner's username for owner change logic
+            # if "team_name" in project_metadata:
+            #     import_username = project_metadata["team_name"]
             import_creator_username, import_project_slug = p.get_creator_username()
             pimport = ProjectImporter(
                 host=import_url,
-                username=import_username,
+                username=import_username,  # Use API key owner's username from config
                 project_name=project_name,
                 api_key=import_apiv1_key,
                 top_level_dir=import_local_directory,

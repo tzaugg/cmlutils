@@ -11,6 +11,76 @@ data and metadata before the project is fully migrated to the target CML workspa
 ## CML Project migration documentation
 The comprehensive documentation for project migration can be located within the [GitHub wiki page](https://github.com/cloudera/cmlutils/wiki).
 
+## V2 API Support and Cross-Owner Operations
+
+`cmlutil` now leverages **CML V2 API** endpoints, enabling enhanced capabilities for project backup and restore operations:
+
+### Key Features
+
+#### 1. **Cross-Owner Project Management**
+- **Any user's API key** can now perform backup/restore operations on projects they don't own
+- The tool temporarily changes project ownership to the API key owner during operations
+- Original project ownership is **automatically restored** after operations complete
+- Works seamlessly with **user-owned** and **team-owned** projects
+
+#### 2. **Enhanced Security**
+- Temporary ownership changes are handled transparently
+- Ownership restoration occurs even if operations fail (using try/finally blocks)
+- Full audit trail in verbose logs showing owner changes and restorations
+
+#### 3. **V2 API Migration**
+- All project, model, job, and application operations use V2 endpoints
+- Improved project search supports public and team-owned projects
+- Enhanced runtime compatibility and automatic runtime selection
+- Better error handling and response parsing
+
+### Configuration
+
+Update your configuration files to use `apiv2_key` instead of (or in addition to) `apiv1_key`:
+
+```ini
+[DEFAULT]
+url=https://cml-workspace.example.com
+ca_path=/path/to/cert.pem
+username=your_username
+apiv2_key=your_v2_api_key_here
+
+[my_project]
+username=your_username
+apiv2_key=your_v2_api_key_here
+```
+
+**Note**: The tool will prefer `apiv2_key` when available, falling back to `apiv1_key` for backward compatibility.
+
+### How It Works
+
+When exporting or importing a project you don't own:
+
+1. **Pre-Operation**: Tool queries the current project owner and caches it
+2. **Temporary Change**: Project owner is temporarily changed to the API key owner
+3. **Operation**: Export/import operations proceed with proper permissions
+4. **Restoration**: Original project owner is restored automatically
+
+**Example Workflow:**
+```bash
+# Export a project owned by 'team-data-science' using 'alice' API key
+cmlutil project export --project_name data_pipeline
+
+# Log output shows:
+# INFO - Current project owner: team-data-science, API key owner: alice
+# INFO - Successfully changed project owner from team-data-science to alice
+# INFO - Project files transferred successfully
+# INFO - Successfully restored project owner to team-data-science
+```
+
+### Team Ownership Support
+
+The tool fully supports projects owned by CML teams:
+- Export from team-owned projects
+- Import into team-owned projects
+- Automatic team ownership restoration
+- Team member API keys can manage team projects
+
 ## Enhanced Logging and Verbose Mode
 
 CMLutils now supports enhanced logging with a `--verbose` flag to provide detailed visibility into API calls, file transfers, and migration operations.
@@ -148,11 +218,11 @@ When `ca_path=False` is set, cmlutils will:
 url=https://cml-workspace.example.com
 ca_path=False
 username=admin
-apiv1_key=your_api_key_here
+apiv2_key=your_v2_api_key_here
 
 [my_project]
 username=admin
-apiv1_key=your_api_key_here
+apiv2_key=your_v2_api_key_here
 ```
 
 #### Security Warning

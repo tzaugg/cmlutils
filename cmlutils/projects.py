@@ -385,7 +385,10 @@ class ProjectExporter(BaseWorkspaceInteractor):
         return response.json()
 
     def _get_project_id_by_name(self):
-        """Helper method to get project ID by project name using V2 API"""
+        """Helper method to get project ID by project name using V2 API
+        Tries multiple search strategies to find projects including public ones"""
+        
+        # Strategy 1: Search with name filter (finds owned projects)
         search_option = {"name": self.project_name}
         encoded_option = urllib.parse.quote(
             json.dumps(search_option).replace('"', '"')
@@ -405,7 +408,29 @@ class ProjectExporter(BaseWorkspaceInteractor):
             for project in project_list:
                 if project["name"] == self.project_name:
                     return project["id"]
-        raise RuntimeError(f"Project {self.project_name} not found")
+        
+        # Strategy 2: List all projects (no filter) - gets all accessible projects including public ones
+        logging.info(f"Project {self.project_name} not found in owned projects, searching all accessible projects...")
+        endpoint_all = "/api/v2/projects?page_size=1000&sort=-created_at"
+        
+        try:
+            response_all = call_api_v2(
+                host=self.host,
+                endpoint=endpoint_all,
+                method="GET",
+                user_token=self.apiv2_key,
+                ca_path=self.ca_path,
+            )
+            all_projects = response_all.json()["projects"]
+            
+            for project in all_projects:
+                if project["name"].lower() == self.project_name.lower():
+                    logging.info(f"Found project {self.project_name} in accessible projects list (ID: {project['id']})")
+                    return project["id"]
+        except Exception as e:
+            logging.warning(f"Could not search all accessible projects: {e}")
+        
+        raise RuntimeError(f"Project {self.project_name} not found in owned or accessible projects")
 
     # Get CDSW project env variables using API v1
     def get_project_env(self):
@@ -1205,7 +1230,7 @@ class ProjectImporter(BaseWorkspaceInteractor):
         self.metrics_data = dict()
 
     def get_creator_username(self):
-        # Use V2 API to search for the project
+        # Use V2 API to search for the project with enhanced search for team/shared projects
         search_option = {"name": self.project_name}
         encoded_option = urllib.parse.quote(
             json.dumps(search_option).replace('"', '"')
@@ -1229,13 +1254,37 @@ class ProjectImporter(BaseWorkspaceInteractor):
                     # V2 API uses project name as slug (V1 had slug_raw field but V2 doesn't)
                     project_slug = project.get("slug") or project.get("slug_raw") or self.project_name
                     return creator_info.get("username"), project_slug
+        
+        # Enhanced search: List all accessible projects (including team/shared projects)
+        logging.info(f"Project {self.project_name} not found in basic search, trying all accessible projects...")
+        endpoint_all = "/api/v2/projects?page_size=1000&sort=-created_at"
+        
+        try:
+            response_all = call_api_v2(
+                host=self.host,
+                endpoint=endpoint_all,
+                method="GET",
+                user_token=self.apiv2_key,
+                ca_path=self.ca_path,
+            )
+            all_projects = response_all.json()["projects"]
+            
+            for project in all_projects:
+                if project["name"].lower() == self.project_name.lower():
+                    logging.info(f"Found project {self.project_name} in accessible projects (team/shared)")
+                    creator_info = project.get("creator", {})
+                    project_slug = project.get("slug") or project.get("slug_raw") or self.project_name
+                    return creator_info.get("username"), project_slug
+        except Exception as e:
+            logging.warning(f"Could not search all accessible projects: {e}")
+        
         return None, None
 
     def transfer_project(self, log_filedir: str, verify=False):
         owner_changed = False
         result = None
         try:
-            # Get project slug from creator info
+            # Get project slug and ID from creator info
             if not self.project_slug:
                 creator_username, project_slug = self.get_creator_username()
                 if project_slug:
@@ -1243,13 +1292,65 @@ class ProjectImporter(BaseWorkspaceInteractor):
                 else:
                     self.project_slug = self.project_name.lower()
             
-            # Note: For import, we skip owner change logic because:
-            # - If project doesn't exist, we'll create it as admin (no owner change needed)
-            # - If project exists and admin owns it, no owner change needed
-            # - If project exists and someone else owns it, V2 API won't show it to us
-            #   (this is expected V2 behavior - you can't import to projects you don't own)
-            # The export flow handles owner changes for backup operations.
-            logging.info("Import: Proceeding with file transfer (owner change handled by export)")
+            # Get project ID if not already set
+            if not self.project_id:
+                creator_username, project_slug = self.get_creator_username()
+                # Search for project to get ID using V2 API with enhanced search
+                from datetime import datetime, timedelta
+                import json
+                import urllib.parse
+                
+                # First try with name filter
+                search_filter = json.dumps({'name': self.project_name})
+                endpoint = f'/api/v2/projects?search_filter={urllib.parse.quote(search_filter)}&page_size=50&sort=-created_at'
+                
+                response = call_api_v2(
+                    host=self.host,
+                    endpoint=endpoint,
+                    method="GET",
+                    user_token=self.apiv2_key,
+                    ca_path=self.ca_path,
+                )
+                project_list = response.json().get("projects", [])
+                
+                for project in project_list:
+                    if project["name"].lower() == self.project_name.lower():
+                        self.project_id = project["id"]
+                        if not self.project_slug:
+                            self.project_slug = project.get("slug") or project.get("slug_raw") or self.project_name.lower()
+                        break
+                
+                # If not found, try enhanced search (all accessible projects including team/shared)
+                if not self.project_id:
+                    logging.info(f"Project {self.project_name} not found with name filter, searching all accessible projects...")
+                    endpoint_all = "/api/v2/projects?page_size=1000&sort=-created_at"
+                    
+                    try:
+                        response_all = call_api_v2(
+                            host=self.host,
+                            endpoint=endpoint_all,
+                            method="GET",
+                            user_token=self.apiv2_key,
+                            ca_path=self.ca_path,
+                        )
+                        all_projects = response_all.json().get("projects", [])
+                        
+                        for project in all_projects:
+                            if project["name"].lower() == self.project_name.lower():
+                                self.project_id = project["id"]
+                                if not self.project_slug:
+                                    self.project_slug = project.get("slug") or project.get("slug_raw") or self.project_name.lower()
+                                logging.info(f"Found project {self.project_name} in accessible projects (ID: {self.project_id})")
+                                break
+                    except Exception as e:
+                        logging.warning(f"Could not search all accessible projects: {e}")
+            
+            # Temporarily change owner to current user for file transfer
+            if self.project_id:
+                logging.info("Checking if project owner change is needed for import file transfer...")
+                owner_changed = self.temporarily_change_owner_to_admin(self.project_id)
+            else:
+                logging.info("Project ID not found, proceeding without owner change (new project will be created)")
             
             rsync_enabled_runtime_id = get_rsync_enabled_runtime_id(
                 host=self.host, api_key=self.apiv2_key, ca_path=self.ca_path
@@ -1302,8 +1403,14 @@ class ProjectImporter(BaseWorkspaceInteractor):
             self.remove_cdswctl_dir(cdswctl_path)
             return result
         finally:
-            # No owner restoration needed for import
-            pass
+            # Always restore owner if it was changed, even if import fails
+            if self.project_id and self._original_owner_username:
+                try:
+                    logging.info("Restoring owner after import file transfer")
+                    self.restore_original_owner(self.project_id)
+                except Exception as e:
+                    logging.error(f"Failed to restore original project owner: {e}")
+                    # Log error but don't fail - the import already failed
 
     def verify_project(self, log_filedir: str):
         rsync_enabled_runtime_id = get_rsync_enabled_runtime_id(
@@ -1775,36 +1882,46 @@ class ProjectImporter(BaseWorkspaceInteractor):
             logging.debug("No original owner cached, skipping restoration")
 
     def import_metadata(self, project_id: str):
-        # Note: Import does not change project ownership
-        # Projects are either newly created (owned by admin) or already owned by admin
-        # V2 API doesn't allow importing to projects owned by others
-        logging.info("Importing metadata (no owner change needed for import)")
-        
-        models_metadata_filepath = get_models_metadata_file_path(
-            top_level_dir=self.top_level_dir, project_name=self.project_name
-        )
-        self.create_models(
-            project_id=project_id, models_metadata_filepath=models_metadata_filepath
-        )
+        owner_changed = False
+        try:
+            # Temporarily change owner to current user for metadata import
+            logging.info("Checking if project owner change is needed for metadata import...")
+            owner_changed = self.temporarily_change_owner_to_admin(project_id)
+            
+            models_metadata_filepath = get_models_metadata_file_path(
+                top_level_dir=self.top_level_dir, project_name=self.project_name
+            )
+            self.create_models(
+                project_id=project_id, models_metadata_filepath=models_metadata_filepath
+            )
 
-        app_metadata_filepath = get_applications_metadata_file_path(
-            top_level_dir=self.top_level_dir, project_name=self.project_name
-        )
-        self.create_stoppped_applications(
-            project_id=project_id, app_metadata_filepath=app_metadata_filepath
-        )
+            app_metadata_filepath = get_applications_metadata_file_path(
+                top_level_dir=self.top_level_dir, project_name=self.project_name
+            )
+            self.create_stoppped_applications(
+                project_id=project_id, app_metadata_filepath=app_metadata_filepath
+            )
 
-        job_metadata_filepath = get_jobs_metadata_file_path(
-            top_level_dir=self.top_level_dir, project_name=self.project_name
-        )
-        self.create_paused_jobs(
-            project_id=project_id, job_metadata_filepath=job_metadata_filepath
-        )
-        self.get_project_infov2(proj_id=project_id)
-        self.collect_import_model_list(project_id=project_id)
-        self.collect_import_application_list(project_id=project_id)
-        self.collect_import_job_list(project_id=project_id)
-        return self.metrics_data
+            job_metadata_filepath = get_jobs_metadata_file_path(
+                top_level_dir=self.top_level_dir, project_name=self.project_name
+            )
+            self.create_paused_jobs(
+                project_id=project_id, job_metadata_filepath=job_metadata_filepath
+            )
+            self.get_project_infov2(proj_id=project_id)
+            self.collect_import_model_list(project_id=project_id)
+            self.collect_import_application_list(project_id=project_id)
+            self.collect_import_job_list(project_id=project_id)
+            return self.metrics_data
+        finally:
+            # Always restore original owner if we have one cached
+            if project_id and self._original_owner_username:
+                try:
+                    logging.info("Restoring owner after metadata import")
+                    self.restore_original_owner(project_id)
+                except Exception as e:
+                    logging.error(f"Failed to restore original project owner: {e}")
+                    # Don't fail the import, but log the error
 
     def collect_imported_project_data(self, project_id: str):
         proj_data_raw = self.get_project_infov2(proj_id=project_id)
@@ -1944,26 +2061,81 @@ class ProjectImporter(BaseWorkspaceInteractor):
                         subdomain=app_metadata["subdomain"], proj_id=project_id
                     ):
                         app_metadata["project_id"] = project_id
-                        if (
-                            not "runtime_identifier" in app_metadata
-                            and proj_with_runtime
-                        ):
-                            runtime_identifier = get_best_runtime(
-                                runtime_list["runtimes"],
-                                app_metadata["runtime_edition"],
-                                app_metadata["runtime_editor"],
-                                app_metadata["runtime_kernel"],
-                                app_metadata["runtime_shortversion"],
-                                app_metadata["runtime_fullversion"],
-                            )
-                            if runtime_identifier != None:
-                                app_metadata["runtime_identifier"] = runtime_identifier
-                            else:
-                                app_metadata[
-                                    "runtime_identifier"
-                                ] = legacy_engine_runtime_constants.engine_to_runtime_map().get(
-                                    "default"
+                        # Check if all required runtime fields are present
+                        has_runtime_fields = all(
+                            field in app_metadata
+                            for field in [
+                                "runtime_edition",
+                                "runtime_editor",
+                                "runtime_kernel",
+                                "runtime_shortversion",
+                                "runtime_fullversion",
+                            ]
+                        )
+                        
+                        logging.info(f"proj_with_runtime={proj_with_runtime}, has_runtime_fields={has_runtime_fields}")
+                        logging.info(f"runtime_identifier in app_metadata: {'runtime_identifier' in app_metadata}")
+                        logging.info(f"app_metadata keys before runtime check: {list(app_metadata.keys())}")
+                        logging.info(f"runtime_list exists: {runtime_list is not None}, has runtimes: {runtime_list and 'runtimes' in runtime_list and bool(runtime_list['runtimes'])}")
+                        
+                        # For projects using runtimes, always ensure runtime_identifier is set
+                        if proj_with_runtime and not "runtime_identifier" in app_metadata:
+                            logging.info(f"Entered runtime_identifier setting logic, has_runtime_fields={has_runtime_fields}")
+                            if has_runtime_fields:
+                                logging.info("Has runtime fields, using get_best_runtime")
+                                runtime_identifier = get_best_runtime(
+                                    runtime_list["runtimes"],
+                                    app_metadata["runtime_edition"],
+                                    app_metadata["runtime_editor"],
+                                    app_metadata["runtime_kernel"],
+                                    app_metadata["runtime_shortversion"],
+                                    app_metadata["runtime_fullversion"],
                                 )
+                                if runtime_identifier != None:
+                                    app_metadata["runtime_identifier"] = runtime_identifier
+                                    logging.info(
+                                        f"Set runtime_identifier from runtime fields for app {app_metadata.get('name')}"
+                                    )
+                                else:
+                                    # Try first available runtime if no match found
+                                    if runtime_list and "runtimes" in runtime_list and runtime_list["runtimes"]:
+                                        first_runtime = runtime_list["runtimes"][0]
+                                        app_metadata["runtime_identifier"] = (
+                                            first_runtime.get("imageIdentifier") or first_runtime.get("fullVersion")
+                                        )
+                                        logging.info(
+                                            f"Using first available runtime for app {app_metadata.get('name')}: {app_metadata['runtime_identifier']}"
+                                        )
+                            else:
+                                logging.info("No runtime fields, using first available runtime from workspace")
+                                # If runtime fields are missing, use first available runtime from workspace
+                                if runtime_list and "runtimes" in runtime_list and runtime_list["runtimes"]:
+                                    first_runtime = runtime_list["runtimes"][0]
+                                    logging.info(f"First runtime available: {json.dumps(first_runtime, indent=2)}")
+                                    # Use the first available runtime - prefer imageIdentifier (camelCase!), fallback to fullVersion
+                                    app_metadata["runtime_identifier"] = (
+                                        first_runtime.get("imageIdentifier") or first_runtime.get("fullVersion")
+                                    )
+                                    logging.info(
+                                        f"Using first available runtime (no runtime fields) for app {app_metadata.get('name')}: {app_metadata['runtime_identifier']}"
+                                    )
+                        # Parse environment from JSON string to dict if needed for V2 API
+                        if "environment" in app_metadata and isinstance(
+                            app_metadata["environment"], str
+                        ):
+                            try:
+                                app_metadata["environment"] = json.loads(
+                                    app_metadata["environment"]
+                                )
+                            except json.JSONDecodeError:
+                                logging.warning(
+                                    f"Could not parse environment JSON for app {app_metadata.get('name', 'unknown')}, using empty dict"
+                                )
+                                app_metadata["environment"] = {}
+                        
+                        # Debug: log the app_metadata being sent
+                        logging.info(f"Creating application with metadata: {json.dumps(app_metadata, indent=2)}")
+                        
                         app_id = self.create_application_v2(
                             proj_id=project_id, app_metadata=app_metadata
                         )
