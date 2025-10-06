@@ -17,6 +17,7 @@ DEFAULT_ENTRIES = [".cache", ".local"]
 USERNAME_KEY = "username"
 URL_KEY = "url"
 API_V1_KEY = "apiv1_key"
+API_V2_KEY = "apiv2_key"
 OUTPUT_DIR_KEY = "output_dir"
 SOURCE_DIR_KEY = "source_dir"
 PROJECT_NAME_KEY = "project_name"
@@ -27,6 +28,7 @@ MAX_API_PAGE_LENGTH = 30
 class ApiV2Endpoints(Enum):
     PROJECTS = "/api/v2/projects"
     GET_PROJECT = "/api/v2/projects/$project_id"
+    UPDATE_PROJECT = "/api/v2/projects/$project_id"
     CREATE_MODEL = "/api/v2/projects/$project_id/models"
     BUILD_MODEL = "/api/v2/projects/$project_id/models/$model_id/builds"
     CREATE_APP = "/api/v2/projects/$project_id/applications"

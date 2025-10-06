@@ -12,6 +12,7 @@ import click
 from cmlutils import constants
 from cmlutils.constants import (
     API_V1_KEY,
+    API_V2_KEY,
     CA_PATH_KEY,
     OUTPUT_DIR_KEY,
     SOURCE_DIR_KEY,
@@ -72,7 +73,7 @@ def _read_config_file(file_path: str, project_name: str):
     config = ConfigParser()
     if os.path.exists(file_path):
         config.read(file_path)
-        keys = (USERNAME_KEY, URL_KEY, API_V1_KEY, OUTPUT_DIR_KEY, SOURCE_DIR_KEY)
+        keys = (USERNAME_KEY, URL_KEY, OUTPUT_DIR_KEY, SOURCE_DIR_KEY)
         for key in keys:
             try:
                 value = config.get(project_name, key)
@@ -80,6 +81,18 @@ def _read_config_file(file_path: str, project_name: str):
             except NoOptionError:
                 print("Key %s is missing from config file." % (key))
                 raise
+        
+        # Try apiv2_key first (preferred), fallback to apiv1_key for backwards compatibility
+        try:
+            api_key = config.get(project_name, API_V2_KEY)
+        except NoOptionError:
+            try:
+                api_key = config.get(project_name, API_V1_KEY)
+            except NoOptionError:
+                print("Key %s or %s is missing from config file." % (API_V2_KEY, API_V1_KEY))
+                raise
+        output_config[API_V1_KEY] = api_key  # Store as API_V1_KEY for backwards compat with rest of code
+        
         output_config[CA_PATH_KEY] = config.get(project_name, CA_PATH_KEY, fallback="")
         return output_config
     else:
@@ -174,7 +187,7 @@ def project_export_cmd(project_name, verbose):
         logging.info("File transfer has started.")
         pexport = ProjectExporter(
             host=url,
-            username=creator_username,
+            username=username,  # Use API key owner's username, not project creator's
             project_name=project_name,
             api_key=apiv1_key,
             top_level_dir=output_dir,
@@ -451,7 +464,7 @@ def project_import_cmd(project_name, verify, verbose):
                 )
                 pexport = ProjectExporter(
                     host=export_url,
-                    username=export_creator_username,
+                    username=export_username,  # Use API key owner's username
                     project_name=project_name,
                     api_key=export_apiv1_key,
                     top_level_dir=export_output_dir,
@@ -721,7 +734,7 @@ def project_verify_cmd(project_name, verbose):
         )
         pexport = ProjectExporter(
             host=export_url,
-            username=export_creator_username,
+            username=export_username,  # Use API key owner's username
             project_name=project_name,
             api_key=export_apiv1_key,
             top_level_dir=export_output_dir,
