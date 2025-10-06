@@ -15,16 +15,6 @@ The comprehensive documentation for project migration can be located within the 
 
 `cmlutil` now leverages **CML V2 API** endpoints, enabling enhanced capabilities for project backup and restore operations:
 
-### What's New
-
-✅ **Added:**
-- Cross-owner project management documentation
-- Configuration examples with `apiv2_key`
-- How the temporary owner change works
-- Team ownership support details
-- Example workflow with log output
-- Updated all config examples to use `apiv2_key`
-
 ### Key Features
 
 #### 1. **Cross-Owner Project Management**
