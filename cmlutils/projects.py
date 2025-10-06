@@ -2043,16 +2043,9 @@ class ProjectImporter(BaseWorkspaceInteractor):
                             ]
                         )
                         
-                        logging.info(f"proj_with_runtime={proj_with_runtime}, has_runtime_fields={has_runtime_fields}")
-                        logging.info(f"runtime_identifier in app_metadata: {'runtime_identifier' in app_metadata}")
-                        logging.info(f"app_metadata keys before runtime check: {list(app_metadata.keys())}")
-                        logging.info(f"runtime_list exists: {runtime_list is not None}, has runtimes: {runtime_list and 'runtimes' in runtime_list and bool(runtime_list['runtimes'])}")
-                        
                         # For projects using runtimes, always ensure runtime_identifier is set
                         if proj_with_runtime and not "runtime_identifier" in app_metadata:
-                            logging.info(f"Entered runtime_identifier setting logic, has_runtime_fields={has_runtime_fields}")
                             if has_runtime_fields:
-                                logging.info("Has runtime fields, using get_best_runtime")
                                 runtime_identifier = get_best_runtime(
                                     runtime_list["runtimes"],
                                     app_metadata["runtime_edition"],
@@ -2078,17 +2071,15 @@ class ProjectImporter(BaseWorkspaceInteractor):
                                             f"Using first available runtime for app {app_metadata.get('name')}: {app_metadata['runtime_identifier']}"
                                         )
                             else:
-                                logging.info("No runtime fields, using first available runtime from workspace")
                                 # If runtime fields are missing, use first available runtime from workspace
                                 if runtime_list and "runtimes" in runtime_list and runtime_list["runtimes"]:
                                     first_runtime = runtime_list["runtimes"][0]
-                                    logging.info(f"First runtime available: {json.dumps(first_runtime, indent=2)}")
                                     # Use the first available runtime - V2 API returns snake_case fields
                                     app_metadata["runtime_identifier"] = (
                                         first_runtime.get("image_identifier") or first_runtime.get("full_version")
                                     )
                                     logging.info(
-                                        f"Using first available runtime (no runtime fields) for app {app_metadata.get('name')}: {app_metadata['runtime_identifier']}"
+                                        f"Using first available runtime for app {app_metadata.get('name')}"
                                     )
                         # Parse environment from JSON string to dict if needed for V2 API
                         if "environment" in app_metadata and isinstance(
@@ -2103,9 +2094,6 @@ class ProjectImporter(BaseWorkspaceInteractor):
                                     f"Could not parse environment JSON for app {app_metadata.get('name', 'unknown')}, using empty dict"
                                 )
                                 app_metadata["environment"] = {}
-                        
-                        # Debug: log the app_metadata being sent
-                        logging.info(f"Creating application with metadata: {json.dumps(app_metadata, indent=2)}")
                         
                         app_id = self.create_application_v2(
                             proj_id=project_id, app_metadata=app_metadata
