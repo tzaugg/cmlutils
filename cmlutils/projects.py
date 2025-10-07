@@ -2095,14 +2095,41 @@ class ProjectImporter(BaseWorkspaceInteractor):
                                 )
                                 app_metadata["environment"] = {}
                         
-                        app_id = self.create_application_v2(
-                            proj_id=project_id, app_metadata=app_metadata
+                        # Check if script path is a system path (outside project directory)
+                        script_path = app_metadata.get("script", "")
+                        is_system_script = script_path and (
+                            script_path.startswith("/opt/") or 
+                            script_path.startswith("/usr/") or 
+                            script_path.startswith("/bin/") or
+                            script_path.startswith("/etc/")
                         )
-                        self.stop_application_v2(proj_id=project_id, app_id=app_id)
-                        logging.info(
-                            "Application- %s has been migrated successfully",
-                            app_metadata["name"],
-                        )
+                        
+                        if is_system_script:
+                            logging.warning(
+                                f"Application '{app_metadata.get('name')}' uses system script '{script_path}' "
+                                f"which may not exist in target workspace. Attempting import anyway..."
+                            )
+                        
+                        try:
+                            app_id = self.create_application_v2(
+                                proj_id=project_id, app_metadata=app_metadata
+                            )
+                            self.stop_application_v2(proj_id=project_id, app_id=app_id)
+                            logging.info(
+                                "Application- %s has been migrated successfully",
+                                app_metadata["name"],
+                            )
+                        except HTTPError as e:
+                            if "not found in project directory" in str(e):
+                                logging.warning(
+                                    f"Skipping application '{app_metadata.get('name')}': "
+                                    f"Script '{script_path}' not found in target project. "
+                                    f"This typically occurs with system-level or vendor-specific applications. "
+                                    f"You may need to manually recreate this application in the target workspace."
+                                )
+                            else:
+                                # Re-raise if it's a different error
+                                raise
                     else:
                         logging.info(
                             "Skipping the already existing application %s with same subdomain- %s",
