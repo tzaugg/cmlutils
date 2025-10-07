@@ -977,24 +977,35 @@ class ProjectExporter(BaseWorkspaceInteractor):
             app_name_list.append(app_metadata["name"])
             app_metadata["environment"] = app.get("environment", {})
             
-            # Check for runtime kernel information
-            kernel = app_info_flatten.get("runtime.kernel") or app_info_flatten.get("kernel")
+            # Capture complete runtime information from V2 API
+            runtime_identifier = app.get("runtime_identifier")
+            runtime_addons = app.get("runtime_addon_identifiers", [])
+            kernel = app.get("kernel", "")
+            
+            if runtime_identifier:
+                app_metadata["runtime_identifier"] = runtime_identifier
+                logging.debug(f"Captured runtime_identifier for app '{app_metadata['name']}': {runtime_identifier}")
+            
+            if runtime_addons:
+                app_metadata["runtime_addon_identifiers"] = runtime_addons
+                logging.debug(f"Captured runtime addons for app '{app_metadata['name']}': {runtime_addons}")
+            
             if kernel:
-                # We are expecting LEGACY_ENGINE_MAP if the user want to migrate from an engine to runtime,
-                # and the mapping should be given in LEGACY_ENGINE_MAP
-                # If the mapping is not given, the workloads will be created with the default engine images.
-                if bool(legacy_engine_runtime_constants.engine_to_runtime_map()):
+                app_metadata["kernel"] = kernel
+            
+            # Fallback to legacy engine mapping if no runtime_identifier captured
+            if not runtime_identifier:
+                legacy_kernel = app_info_flatten.get("runtime.kernel") or app_info_flatten.get("kernel")
+                if legacy_kernel and bool(legacy_engine_runtime_constants.engine_to_runtime_map()):
                     runtime_identifier = (
                         legacy_engine_runtime_constants.engine_to_runtime_map().get(
-                            kernel,
-                            legacy_engine_runtime_constants.engine_to_runtime_map().get(
-                                "default"
-                            ),
+                            legacy_kernel,
+                            legacy_engine_runtime_constants.engine_to_runtime_map().get("default"),
                         )
                     )
                     app_metadata["runtime_identifier"] = runtime_identifier
-                else:
-                    app_metadata["kernel"] = kernel
+                    app_metadata["kernel"] = legacy_kernel
+            
             app_metadata_list.append(app_metadata)
 
         write_json_file(file_path=filepath, json_data=app_metadata_list)
@@ -1183,6 +1194,13 @@ class ProjectImporter(BaseWorkspaceInteractor):
         self._original_owner_username = None  # Cache for owner restoration
         super().__init__(host, username, project_name, api_key, ca_path, project_slug)
         self.metrics_data = dict()
+        # Track import outcomes for applications
+        self.import_tracking = {
+            "apps_imported_successfully": [],
+            "apps_removed_from_manifest": [],
+            "apps_skipped": [],
+            "apps_imported_with_fallback": []
+        }
 
     def get_creator_username(self):
         # Use V2 API to search for the project with enhanced search for team/shared projects
@@ -1890,6 +1908,10 @@ class ProjectImporter(BaseWorkspaceInteractor):
             self.collect_import_model_list(project_id=project_id)
             self.collect_import_application_list(project_id=project_id)
             self.collect_import_job_list(project_id=project_id)
+            
+            # Generate manual steps manifest if any applications need attention
+            self._generate_manual_steps_manifest()
+            
             return self.metrics_data
         finally:
             # Always restore original owner if we have one cached
@@ -1900,6 +1922,59 @@ class ProjectImporter(BaseWorkspaceInteractor):
                 except Exception as e:
                     logging.error(f"Failed to restore original project owner: {e}")
                     # Don't fail the import, but log the error
+
+    def _generate_manual_steps_manifest(self):
+        """Generate a manifest of applications that need manual attention"""
+        from datetime import datetime
+        
+        # Check if there are any applications needing attention
+        total_needing_attention = (
+            len(self.import_tracking["apps_removed_from_manifest"]) +
+            len(self.import_tracking["apps_skipped"]) +
+            len(self.import_tracking["apps_imported_with_fallback"])
+        )
+        
+        if total_needing_attention == 0:
+            logging.info("✅ All applications imported successfully, no manual steps required")
+            return
+        
+        # Create manifest
+        manifest = {
+            "migration_date": datetime.now().isoformat(),
+            "source_project": "source",  # Will be filled by caller if needed
+            "target_project": self.project_name,
+            "summary": {
+                "total_applications": (
+                    len(self.import_tracking["apps_imported_successfully"]) + total_needing_attention
+                ),
+                "imported_successfully": len(self.import_tracking["apps_imported_successfully"]),
+                "imported_with_fallback": len(self.import_tracking["apps_imported_with_fallback"]),
+                "removed_from_manifest": len(self.import_tracking["apps_removed_from_manifest"]),
+                "skipped": len(self.import_tracking["apps_skipped"])
+            },
+            "removed_from_manifest": self.import_tracking["apps_removed_from_manifest"],
+            "skipped_applications": self.import_tracking["apps_skipped"],
+            "imported_with_fallback": self.import_tracking["apps_imported_with_fallback"],
+            "recommendations": [
+                "Review removed and skipped applications",
+                "Manually recreate applications that were removed",
+                "Test applications imported with fallback runtimes",
+                "Install missing runtimes if available"
+            ]
+        }
+        
+        # Save to file
+        import os
+        manifest_path = os.path.join(self.top_level_dir, self.project_name, "manual-steps-required.json")
+        os.makedirs(os.path.dirname(manifest_path), exist_ok=True)
+        
+        write_json_file(file_path=manifest_path, json_data=manifest)
+        
+        logging.info(f"\n📋 Manual Steps Required:")
+        logging.info(f"  • Removed from manifest: {manifest['summary']['removed_from_manifest']}")
+        logging.info(f"  • Skipped: {manifest['summary']['skipped']}")
+        logging.info(f"  • Imported with fallback: {manifest['summary']['imported_with_fallback']}")
+        logging.info(f"  📁 Details saved to: {manifest_path}")
 
     def collect_imported_project_data(self, project_id: str):
         proj_data_raw = self.get_project_infov2(proj_id=project_id)
@@ -2039,6 +2114,7 @@ class ProjectImporter(BaseWorkspaceInteractor):
                         subdomain=app_metadata["subdomain"], proj_id=project_id
                     ):
                         app_metadata["project_id"] = project_id
+                        
                         # Check if all required runtime fields are present
                         has_runtime_fields = all(
                             field in app_metadata
@@ -2051,7 +2127,7 @@ class ProjectImporter(BaseWorkspaceInteractor):
                             ]
                         )
                         
-                        # For projects using runtimes, always ensure runtime_identifier is set
+                        # For projects using runtimes, only set runtime_identifier if not already present from export
                         if proj_with_runtime and not "runtime_identifier" in app_metadata:
                             if has_runtime_fields:
                                 runtime_identifier = get_best_runtime(
@@ -2103,59 +2179,122 @@ class ProjectImporter(BaseWorkspaceInteractor):
                                 )
                                 app_metadata["environment"] = {}
                         
-                        # Check if script path is a system path (outside project directory)
+                        # Check runtime availability and decide import strategy
+                        app_name = app_metadata.get("name", "unknown")
                         script_path = app_metadata.get("script", "")
-                        is_system_script = script_path and (
-                            script_path.startswith("/opt/") or 
-                            script_path.startswith("/usr/") or 
-                            script_path.startswith("/bin/") or
-                            script_path.startswith("/etc/")
+                        required_runtime = app_metadata.get("runtime_identifier")
+                        
+                        is_system_script = script_path and any(
+                            script_path.startswith(p) for p in ["/opt/", "/usr/", "/bin/", "/etc/"]
                         )
                         
-                        if is_system_script:
-                            logging.warning(
-                                f"Application '{app_metadata.get('name')}' uses system script '{script_path}' "
-                                f"which may not exist in target workspace. Attempting import anyway..."
+                        # Check if required runtime exists in target workspace
+                        runtime_available = False
+                        if required_runtime:
+                            available_runtime_ids = [r.get("image_identifier") for r in runtime_list.get("runtimes", [])]
+                            runtime_available = required_runtime in available_runtime_ids
+                            logging.info(
+                                f"Application '{app_name}' requires runtime: {required_runtime} "
+                                f"({'available' if runtime_available else 'NOT available'} in target)"
                             )
                         
-                        try:
-                            app_id = self.create_application_v2(
-                                proj_id=project_id, app_metadata=app_metadata
-                            )
-                            self.stop_application_v2(proj_id=project_id, app_id=app_id)
-                            logging.info(
-                                "Application- %s has been migrated successfully",
-                                app_metadata["name"],
-                            )
-                        except HTTPError as e:
-                            # Check if the error is specifically about script not found
-                            error_message = str(e)  # Default to string representation
-                            
-                            # Try to extract detailed error message from response JSON
-                            if hasattr(e, 'response') and e.response is not None:
-                                try:
-                                    error_json = e.response.json()
-                                    # Try to get the message field first, then error field
-                                    if "message" in error_json and error_json["message"]:
-                                        error_message = error_json["message"]
-                                    elif "error" in error_json and error_json["error"]:
-                                        error_message = error_json["error"]
-                                except:
-                                    # If JSON parsing fails, keep the default string representation
-                                    pass
-                            
-                            if "not found in project directory" in error_message:
-                                logging.warning(
-                                    f"⚠️  Skipped application '{app_metadata.get('name')}': "
-                                    f"Script '{script_path}' not found in target project. "
-                                    f"This typically occurs with system-level or vendor-specific applications. "
-                                    f"You may need to manually recreate this application in the target workspace."
+                        # Decision logic based on runtime availability and script type
+                        if not required_runtime or runtime_available:
+                            # Runtime available (or not specified), attempt import
+                            try:
+                                app_id = self.create_application_v2(
+                                    proj_id=project_id, app_metadata=app_metadata
                                 )
-                                # Continue processing other applications
+                                self.stop_application_v2(proj_id=project_id, app_id=app_id)
+                                logging.info(f"✅ Application '{app_name}' imported successfully")
+                                self.import_tracking["apps_imported_successfully"].append({
+                                    "name": app_name,
+                                    "runtime": required_runtime or "default",
+                                    "script": script_path
+                                })
+                            except HTTPError as e:
+                                # Extract error message
+                                error_message = str(e)
+                                if hasattr(e, 'response') and e.response is not None:
+                                    try:
+                                        error_json = e.response.json()
+                                        if "message" in error_json and error_json["message"]:
+                                            error_message = error_json["message"]
+                                        elif "error" in error_json and error_json["error"]:
+                                            error_message = error_json["error"]
+                                    except:
+                                        pass
+                                
+                                if "not found in project directory" in error_message:
+                                    # Script doesn't exist even though runtime is available
+                                    logging.warning(
+                                        f"🗑️  Removed application '{app_name}' from import: "
+                                        f"Script '{script_path}' not found in runtime. "
+                                        f"This may indicate a runtime version mismatch."
+                                    )
+                                    self.import_tracking["apps_removed_from_manifest"].append({
+                                        "name": app_name,
+                                        "runtime": required_runtime,
+                                        "script": script_path,
+                                        "reason": "Script not found in available runtime (may be wrong version)",
+                                        "action": "Manually recreate or check runtime version"
+                                    })
+                                    continue
+                                else:
+                                    # Different error, re-raise
+                                    raise
+                        
+                        else:
+                            # Runtime NOT available
+                            if is_system_script:
+                                # System script needs its specific runtime
+                                logging.warning(
+                                    f"⏭️  Skipped application '{app_name}': "
+                                    f"Required runtime not available"
+                                )
+                                self.import_tracking["apps_skipped"].append({
+                                    "name": app_name,
+                                    "runtime": required_runtime,
+                                    "script": script_path,
+                                    "reason": "Required runtime not available",
+                                    "action": "Install required runtime or manually recreate application"
+                                })
                                 continue
                             else:
-                                # Re-raise if it's a different error
-                                raise
+                                # Project script, try with fallback runtime
+                                try:
+                                    app_metadata_fallback = app_metadata.copy()
+                                    # Use first available runtime as fallback
+                                    if runtime_list and "runtimes" in runtime_list and runtime_list["runtimes"]:
+                                        fallback_runtime = runtime_list["runtimes"][0].get("image_identifier")
+                                        app_metadata_fallback["runtime_identifier"] = fallback_runtime
+                                        
+                                        app_id = self.create_application_v2(
+                                            proj_id=project_id, app_metadata=app_metadata_fallback
+                                        )
+                                        self.stop_application_v2(proj_id=project_id, app_id=app_id)
+                                        logging.warning(
+                                            f"⚠️  Application '{app_name}' imported with fallback runtime. "
+                                            f"Please test functionality."
+                                        )
+                                        self.import_tracking["apps_imported_with_fallback"].append({
+                                            "name": app_name,
+                                            "required_runtime": required_runtime,
+                                            "fallback_runtime": fallback_runtime,
+                                            "script": script_path,
+                                            "action": "Test functionality, may need runtime installation"
+                                        })
+                                except HTTPError as e:
+                                    # Even fallback failed
+                                    logging.error(f"❌ Failed to import '{app_name}' even with fallback runtime")
+                                    self.import_tracking["apps_skipped"].append({
+                                        "name": app_name,
+                                        "runtime": required_runtime,
+                                        "script": script_path,
+                                        "reason": "Failed even with fallback runtime",
+                                        "action": "Manually recreate application"
+                                    })
+                                    continue
                     else:
                         logging.info(
                             "Skipping the already existing application %s with same subdomain- %s",
