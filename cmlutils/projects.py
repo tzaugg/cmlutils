@@ -1313,46 +1313,6 @@ class ProjectImporter(BaseWorkspaceInteractor):
         
         return None, None
 
-    def _create_placeholder_script_via_ssh(self, ssh_port: int):
-        """Create a placeholder script in the project for apps with missing scripts"""
-        import subprocess
-        
-        placeholder_script = """#!/usr/bin/env python3
-'''
-Placeholder script for migrated applications.
-This file was created during project migration when the original
-application script was not found in the target runtime.
-
-IMPORTANT: Update this application's script path in the CML UI
-to point to the correct script location, or update this file
-with the actual application code.
-'''
-
-print("This is a placeholder script created during migration.")
-print("Please update the application configuration to use the correct script.")
-print("Or edit this file with your application code.")
-"""
-        
-        try:
-            # Create placeholder.py in the project directory via SSH
-            cmd = [
-                "ssh",
-                "-o", "StrictHostKeyChecking=no",
-                "-o", "UserKnownHostsFile=/dev/null",
-                "-p", str(ssh_port),
-                "cdsw@localhost",
-                f"cat > /home/cdsw/placeholder.py << 'PLACEHOLDER_EOF'\n{placeholder_script}\nPLACEHOLDER_EOF"
-            ]
-            
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
-            
-            if result.returncode == 0:
-                logging.info("✅ Created placeholder.py in project workspace")
-            else:
-                logging.warning(f"Could not create placeholder.py: {result.stderr}")
-        except Exception as e:
-            logging.warning(f"Failed to create placeholder script (non-critical): {e}")
-    
     def transfer_project(self, log_filedir: str, verify=False):
         owner_changed = False
         result = None
@@ -1473,11 +1433,6 @@ print("Or edit this file with your application code.")
                     project_name=self.project_name,
                     log_filedir=log_filedir,
                 )
-            
-            # Create placeholder script for applications with missing scripts
-            # This allows applications with system-level scripts to be imported
-            logging.info("Creating placeholder script for potential missing application scripts...")
-            self._create_placeholder_script_via_ssh(port)
             
             self.remove_cdswctl_dir(cdswctl_path)
             self.terminate_ssh_session()
@@ -2356,114 +2311,24 @@ print("Or edit this file with your application code.")
                                         "script": script_path
                                     })
                             except HTTPError as e:
-                                # Extract error message
+                                # Application creation failed
+                                logging.error(f"Failed to import application '{app_name}': {e}")
                                 error_message = str(e)
                                 if hasattr(e, 'response') and e.response is not None:
                                     try:
                                         error_json = e.response.json()
-                                        if "message" in error_json and error_json["message"]:
-                                            error_message = error_json["message"]
-                                        elif "error" in error_json and error_json["error"]:
-                                            error_message = error_json["error"]
+                                        error_message = error_json.get("message") or error_json.get("error") or str(e)
                                     except:
                                         pass
                                 
-                                if "not found in project directory" in error_message:
-                                    # Check if this is a Data Visualization or other system-container app
-                                    is_dataviz_app = required_runtime and ("dataviz" in required_runtime.lower() or "cdv" in required_runtime.lower())
-                                    
-                                    if is_dataviz_app:
-                                        # Data Viz apps use scripts from runtime containers, not project filesystem
-                                        # The API validates against project files, so these can't be auto-migrated
-                                        logging.warning(
-                                            f"🔵 Application '{app_name}' is a Data Visualization app with containerized script. "
-                                            f"These applications require manual recreation through the CML UI."
-                                        )
-                                        self.import_tracking["apps_removed_from_manifest"].append({
-                                            "name": app_name,
-                                            "runtime": required_runtime,
-                                            "script": script_path,
-                                            "reason": "Data Visualization app with system script (API limitation)",
-                                            "action": "Manually recreate this application through CML UI using the same runtime and subdomain"
-                                        })
-                                        continue
-                                    
-                                    # For non-CDV apps, try importing with a placeholder script
-                                    logging.warning(
-                                        f"⚠️  Script '{script_path}' not found. "
-                                        f"Retrying application '{app_name}' with placeholder script..."
-                                    )
-                                    
-                                    try:
-                                        # Create a copy with a placeholder script path
-                                        app_metadata_placeholder = app_metadata.copy()
-                                        original_script = app_metadata_placeholder.get("script")
-                                        
-                                        # Use a simple placeholder that's likely to exist or be acceptable
-                                        # Try both relative and absolute paths
-                                        placeholder_options = [
-                                            "placeholder.py",
-                                            "/home/cdsw/placeholder.py",
-                                            "app.py",
-                                            "/home/cdsw/app.py",
-                                            "main.py",
-                                            "/home/cdsw/main.py"
-                                        ]
-                                        
-                                        # Try each placeholder
-                                        import_succeeded = False
-                                        for placeholder_script in placeholder_options:
-                                            try:
-                                                app_metadata_placeholder["script"] = placeholder_script
-                                                
-                                                app_id = self.create_application_v2(
-                                                    proj_id=project_id, app_metadata=app_metadata_placeholder
-                                                )
-                                                self.stop_application_v2(proj_id=project_id, app_id=app_id)
-                                                
-                                                logging.info(
-                                                    f"✅ Application '{app_name}' imported with placeholder script '{placeholder_script}'. "
-                                                    f"Original script was: {original_script}"
-                                                )
-                                                
-                                                # Track as imported with modifications
-                                                if "apps_imported_with_modifications" not in self.import_tracking:
-                                                    self.import_tracking["apps_imported_with_modifications"] = []
-                                                
-                                                self.import_tracking["apps_imported_with_modifications"].append({
-                                                    "name": app_name,
-                                                    "runtime": required_runtime,
-                                                    "original_script": original_script,
-                                                    "placeholder_script": placeholder_script,
-                                                    "reason": "Original script not found, imported with placeholder",
-                                                    "action": f"Update script from '{placeholder_script}' to '{original_script}' in CML UI after verifying script location"
-                                                })
-                                                
-                                                import_succeeded = True
-                                                break
-                                            except HTTPError as placeholder_error:
-                                                # This placeholder didn't work, try next
-                                                continue
-                                        
-                                        if not import_succeeded:
-                                            raise Exception("All placeholder scripts failed")
-                                            
-                                    except Exception as retry_error:
-                                        # Even with placeholder failed, now we remove from manifest
-                                        logging.error(
-                                            f"❌ Failed to import '{app_name}' even with placeholder script: {retry_error}"
-                                        )
-                                        self.import_tracking["apps_removed_from_manifest"].append({
-                                            "name": app_name,
-                                            "runtime": required_runtime,
-                                            "script": script_path,
-                                            "reason": "Failed even with placeholder script",
-                                            "action": "Manually recreate application"
-                                        })
-                                    continue
-                                else:
-                                    # Different error, re-raise
-                                    raise
+                                self.import_tracking["apps_removed_from_manifest"].append({
+                                    "name": app_name,
+                                    "runtime": required_runtime,
+                                    "script": script_path,
+                                    "reason": f"Failed to create application: {error_message}",
+                                    "action": "Check application configuration and manually recreate if needed"
+                                })
+                                continue
                         
                         else:
                             # Runtime NOT available
