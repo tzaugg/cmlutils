@@ -957,6 +957,63 @@ class ProjectExporter(BaseWorkspaceInteractor):
         self.metrics_data["total_model"] = len(model_name_list)
         self.metrics_data["model_name_list"] = sorted(model_name_list)
 
+    def _create_placeholder_files_for_system_scripts(self, app_metadata_list):
+        """Create placeholder files for system scripts to enable migration"""
+        import os
+        
+        project_files_dir = get_project_data_dir_path(
+            top_level_dir=self.top_level_dir, project_name=self.project_name
+        )
+        
+        for app_metadata in app_metadata_list:
+            script_path = app_metadata.get("script", "")
+            app_name = app_metadata.get("name", "unknown")
+            
+            # Check if this is a system script (absolute path starting with /)
+            if script_path and script_path.startswith("/"):
+                # Convert absolute path to relative (remove leading /)
+                relative_script_path = script_path.lstrip("/")
+                
+                # Create full path in export directory
+                full_export_path = os.path.join(project_files_dir, relative_script_path)
+                
+                # Create directories if they don't exist
+                os.makedirs(os.path.dirname(full_export_path), exist_ok=True)
+                
+                # Create placeholder file
+                placeholder_content = f"""#!/usr/bin/env python3
+'''
+MIGRATION PLACEHOLDER for {app_name}
+
+This file was automatically created during project export to enable migration
+of applications with system-level scripts.
+
+Original script path: {script_path}
+Application: {app_name}
+
+IMPORTANT:
+This is a placeholder. The actual application uses a script from the runtime
+container. After migration:
+1. The application will be created successfully
+2. Update the script path in CML UI back to: {script_path}
+3. Or keep this placeholder and add your own application code here
+
+For Data Visualization apps, the system script will work automatically once
+the path is updated back to the original: {script_path}
+'''
+
+print(f"Placeholder for {app_name}")
+print(f"Original script: {script_path}")
+print("Please update the application script path in CML UI")
+"""
+                
+                try:
+                    with open(full_export_path, 'w') as f:
+                        f.write(placeholder_content)
+                    logging.info(f"✅ Created placeholder for system script: {relative_script_path}")
+                except Exception as e:
+                    logging.warning(f"Could not create placeholder for {script_path}: {e}")
+    
     def _export_application_metadata(self):
         filepath = get_applications_metadata_file_path(
             top_level_dir=self.top_level_dir, project_name=self.project_name
@@ -1011,6 +1068,9 @@ class ProjectExporter(BaseWorkspaceInteractor):
         write_json_file(file_path=filepath, json_data=app_metadata_list)
         self.metrics_data["total_application"] = len(app_metadata_list)
         self.metrics_data["application_name_list"] = sorted(app_name_list)
+        
+        # Create placeholder files for system scripts to enable migration
+        self._create_placeholder_files_for_system_scripts(app_metadata_list)
 
     def collect_export_job_list(self):
         # Use V2 API to get jobs list
@@ -2252,17 +2312,49 @@ print("Or edit this file with your application code.")
                         # Decision logic based on runtime availability and script type
                         if not required_runtime or runtime_available:
                             # Runtime available (or not specified), attempt import
+                            
+                            # Convert absolute system script paths to relative paths
+                            # (placeholder files are created at relative paths during export)
+                            converted_script = False
+                            original_script_path = script_path
+                            if script_path and script_path.startswith("/"):
+                                relative_script_path = script_path.lstrip("/")
+                                app_metadata["script"] = relative_script_path
+                                converted_script = True
+                                logging.info(
+                                    f"Converting system script path for '{app_name}': "
+                                    f"{original_script_path} → {relative_script_path}"
+                                )
+                            
                             try:
                                 app_id = self.create_application_v2(
                                     proj_id=project_id, app_metadata=app_metadata
                                 )
                                 self.stop_application_v2(proj_id=project_id, app_id=app_id)
-                                logging.info(f"✅ Application '{app_name}' imported successfully")
-                                self.import_tracking["apps_imported_successfully"].append({
-                                    "name": app_name,
-                                    "runtime": required_runtime or "default",
-                                    "script": script_path
-                                })
+                                
+                                if converted_script:
+                                    logging.info(
+                                        f"✅ Application '{app_name}' imported with converted script path. "
+                                        f"Update in CML UI to: {original_script_path}"
+                                    )
+                                    # Track as needing manual update
+                                    if "apps_imported_with_modifications" not in self.import_tracking:
+                                        self.import_tracking["apps_imported_with_modifications"] = []
+                                    self.import_tracking["apps_imported_with_modifications"].append({
+                                        "name": app_name,
+                                        "runtime": required_runtime,
+                                        "original_script": original_script_path,
+                                        "current_script": app_metadata["script"],
+                                        "reason": "System script path converted to relative path for migration",
+                                        "action": f"Update application script in CML UI from '{app_metadata['script']}' back to '{original_script_path}'"
+                                    })
+                                else:
+                                    logging.info(f"✅ Application '{app_name}' imported successfully")
+                                    self.import_tracking["apps_imported_successfully"].append({
+                                        "name": app_name,
+                                        "runtime": required_runtime or "default",
+                                        "script": script_path
+                                    })
                             except HTTPError as e:
                                 # Extract error message
                                 error_message = str(e)
