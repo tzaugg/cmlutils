@@ -1984,6 +1984,158 @@ class ProjectImporter(BaseWorkspaceInteractor):
                     logging.error(f"Failed to restore original project owner: {e}")
                     # Don't fail the import, but log the error
 
+    def _generate_human_readable_report(self, manifest: dict, report_path: str):
+        """Generate a human-readable markdown report for the migration"""
+        from datetime import datetime
+        
+        report_lines = [
+            "# Project Migration Report",
+            "",
+            f"**Migration Date:** {manifest['migration_date']}",
+            f"**Target Project:** {manifest['target_project']}",
+            "",
+            "---",
+            "",
+            "## Summary",
+            "",
+            f"- **Total Applications:** {manifest['summary']['total_applications']}",
+            f"- **Imported Successfully:** {manifest['summary']['imported_successfully']} ✅",
+            f"- **Imported with Modifications:** {manifest['summary']['imported_with_modifications']} ⚠️",
+            f"- **Imported with Fallback Runtime:** {manifest['summary']['imported_with_fallback']} ⚠️",
+            f"- **Removed from Import:** {manifest['summary']['removed_from_manifest']} ❌",
+            f"- **Skipped:** {manifest['summary']['skipped']} ⏭️",
+            "",
+        ]
+        
+        # Applications imported with modifications
+        if manifest.get("imported_with_modifications"):
+            report_lines.extend([
+                "---",
+                "",
+                "## Applications Requiring Manual Updates ⚠️",
+                "",
+                "The following applications were imported successfully but require manual script path updates:",
+                "",
+            ])
+            
+            for app in manifest["imported_with_modifications"]:
+                report_lines.extend([
+                    f"### {app['name']}",
+                    "",
+                    f"- **Runtime:** `{app['runtime']}`",
+                    f"- **Current Script:** `{app['current_script']}`",
+                    f"- **Required Script:** `{app['original_script']}`",
+                    f"- **Reason:** {app['reason']}",
+                    "",
+                    "**Action Required:**",
+                    f"1. Go to CML UI → Projects → {manifest['target_project']} → Applications",
+                    f"2. Select application: **{app['name']}**",
+                    "3. Click **Settings**",
+                    f"4. Update **Script** field from `{app['current_script']}` to `{app['original_script']}`",
+                    "5. **Save** and start the application",
+                    "",
+                ])
+        
+        # Applications removed from manifest
+        if manifest.get("removed_from_manifest"):
+            report_lines.extend([
+                "---",
+                "",
+                "## Applications Not Imported ❌",
+                "",
+                "The following applications could not be imported and require manual recreation:",
+                "",
+            ])
+            
+            for app in manifest["removed_from_manifest"]:
+                report_lines.extend([
+                    f"### {app['name']}",
+                    "",
+                    f"- **Runtime:** `{app.get('runtime', 'N/A')}`",
+                    f"- **Script:** `{app.get('script', 'N/A')}`",
+                    f"- **Reason:** {app['reason']}",
+                    f"- **Action:** {app['action']}",
+                    "",
+                ])
+        
+        # Applications skipped
+        if manifest.get("skipped_applications"):
+            report_lines.extend([
+                "---",
+                "",
+                "## Applications Skipped ⏭️",
+                "",
+                "The following applications were skipped during import:",
+                "",
+            ])
+            
+            for app in manifest["skipped_applications"]:
+                report_lines.extend([
+                    f"### {app['name']}",
+                    "",
+                    f"- **Required Runtime:** `{app.get('runtime', 'N/A')}`",
+                    f"- **Script:** `{app.get('script', 'N/A')}`",
+                    f"- **Reason:** {app['reason']}",
+                    f"- **Action:** {app['action']}",
+                    "",
+                ])
+        
+        # Applications imported with fallback
+        if manifest.get("imported_with_fallback"):
+            report_lines.extend([
+                "---",
+                "",
+                "## Applications Using Fallback Runtime ⚠️",
+                "",
+                "The following applications were imported with a fallback runtime:",
+                "",
+            ])
+            
+            for app in manifest["imported_with_fallback"]:
+                report_lines.extend([
+                    f"### {app['name']}",
+                    "",
+                    f"- **Required Runtime:** `{app.get('required_runtime', 'N/A')}`",
+                    f"- **Fallback Runtime:** `{app.get('fallback_runtime', 'N/A')}`",
+                    f"- **Script:** `{app.get('script', 'N/A')}`",
+                    f"- **Action:** {app.get('action', 'Test functionality')}",
+                    "",
+                ])
+        
+        # Recommendations
+        if manifest.get("recommendations"):
+            report_lines.extend([
+                "---",
+                "",
+                "## Recommendations",
+                "",
+            ])
+            for rec in manifest["recommendations"]:
+                report_lines.append(f"- {rec}")
+            report_lines.append("")
+        
+        # Footer
+        report_lines.extend([
+            "---",
+            "",
+            "## Additional Resources",
+            "",
+            f"- **JSON Manifest:** `manual-steps-required.json` (for automation)",
+            f"- **Migration Logs:** Check the logs directory for detailed migration output",
+            "",
+            "---",
+            "",
+            f"*Report generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}*",
+        ])
+        
+        # Write to file
+        try:
+            with open(report_path, 'w') as f:
+                f.write('\n'.join(report_lines))
+            logging.info(f"Generated human-readable report: {report_path}")
+        except Exception as e:
+            logging.warning(f"Failed to generate human-readable report: {e}")
+    
     def _generate_manual_steps_manifest(self):
         """Generate a manifest of applications that need manual attention"""
         from datetime import datetime
@@ -2035,12 +2187,17 @@ class ProjectImporter(BaseWorkspaceInteractor):
         
         write_json_file(file_path=manifest_path, json_data=manifest)
         
+        # Also generate human-readable report
+        report_path = os.path.join(self.top_level_dir, self.project_name, "MIGRATION_REPORT.md")
+        self._generate_human_readable_report(manifest, report_path)
+        
         logging.info(f"\n📋 Manual Steps Required:")
         logging.info(f"  • Imported with modifications: {manifest['summary']['imported_with_modifications']}")
         logging.info(f"  • Removed from manifest: {manifest['summary']['removed_from_manifest']}")
         logging.info(f"  • Skipped: {manifest['summary']['skipped']}")
         logging.info(f"  • Imported with fallback: {manifest['summary']['imported_with_fallback']}")
-        logging.info(f"  📁 Details saved to: {manifest_path}")
+        logging.info(f"  📁 JSON manifest: {manifest_path}")
+        logging.info(f"  📄 Human-readable report: {report_path}")
 
     def collect_imported_project_data(self, project_id: str):
         proj_data_raw = self.get_project_infov2(proj_id=project_id)
