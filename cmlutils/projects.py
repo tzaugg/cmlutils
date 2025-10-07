@@ -2120,13 +2120,31 @@ class ProjectImporter(BaseWorkspaceInteractor):
                                 app_metadata["name"],
                             )
                         except HTTPError as e:
-                            if "not found in project directory" in str(e):
+                            # Check if the error is specifically about script not found
+                            error_message = str(e)  # Default to string representation
+                            
+                            # Try to extract detailed error message from response JSON
+                            if hasattr(e, 'response') and e.response is not None:
+                                try:
+                                    error_json = e.response.json()
+                                    # Try to get the message field first, then error field
+                                    if "message" in error_json and error_json["message"]:
+                                        error_message = error_json["message"]
+                                    elif "error" in error_json and error_json["error"]:
+                                        error_message = error_json["error"]
+                                except:
+                                    # If JSON parsing fails, keep the default string representation
+                                    pass
+                            
+                            if "not found in project directory" in error_message:
                                 logging.warning(
-                                    f"Skipping application '{app_metadata.get('name')}': "
+                                    f"⚠️  Skipped application '{app_metadata.get('name')}': "
                                     f"Script '{script_path}' not found in target project. "
                                     f"This typically occurs with system-level or vendor-specific applications. "
                                     f"You may need to manually recreate this application in the target workspace."
                                 )
+                                # Continue processing other applications
+                                continue
                             else:
                                 # Re-raise if it's a different error
                                 raise
