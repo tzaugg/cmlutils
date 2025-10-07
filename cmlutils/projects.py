@@ -10,7 +10,7 @@ from string import Template
 from sys import stdout
 from typing import Any
 
-from requests import HTTPError
+from requests import HTTPError  # pyright: ignore[reportMissingModuleSource]
 
 from cmlutils import constants, legacy_engine_runtime_constants
 from cmlutils.base import BaseWorkspaceInteractor
@@ -1356,6 +1356,7 @@ class ProjectImporter(BaseWorkspaceInteractor):
                     log_filedir=log_filedir,
                 )
             self.remove_cdswctl_dir(cdswctl_path)
+            self.terminate_ssh_session()
             return result
         finally:
             # Always restore owner if it was changed, even if import fails
@@ -1366,6 +1367,13 @@ class ProjectImporter(BaseWorkspaceInteractor):
                 except Exception as e:
                     logging.error(f"Failed to restore original project owner: {e}")
                     # Log error but don't fail - the import already failed
+            
+            # Always terminate SSH session to prevent leaks
+            if self._ssh_subprocess is not None:
+                try:
+                    self.terminate_ssh_session()
+                except Exception as e:
+                    logging.error(f"Failed to terminate SSH session: {e}")
 
     def verify_project(self, log_filedir: str):
         rsync_enabled_runtime_id = get_rsync_enabled_runtime_id(
