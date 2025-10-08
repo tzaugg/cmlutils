@@ -1101,8 +1101,31 @@ print("Please update the application script path in CML UI")
             job_metadata["attachments"] = job.get("report", {}).get("attachments", [])
             job_metadata["environment"] = job.get("environment", {})
             
-            # Check for runtime information
-            if "runtime.id" in job_info_flatten or "runtime_id" in job_info_flatten:
+            # V2 API: Check for runtime_identifier first (modern approach)
+            runtime_identifier = job.get("runtime_identifier")
+            if runtime_identifier:
+                # Find the runtime details by image_identifier to get full metadata
+                runtime_obj = None
+                for runtime in runtime_list.get("runtimes", []):
+                    if runtime.get("image_identifier") == runtime_identifier:
+                        # Extract runtime details for import fallback matching
+                        runtime_obj = {
+                            "runtime_kernel": runtime.get("kernel"),
+                            "runtime_edition": runtime.get("edition"),
+                            "runtime_editor": runtime.get("editor"),
+                            "runtime_fullversion": runtime.get("full_version"),
+                            "runtime_shortversion": runtime.get("short_version"),
+                        }
+                        break
+                
+                if runtime_obj:
+                    job_metadata.update(runtime_obj)
+                    logging.debug(f"Captured runtime details for job '{job_metadata['name']}': {runtime_obj['runtime_kernel']}, {runtime_obj['runtime_edition']}, {runtime_obj['runtime_editor']}")
+                else:
+                    logging.warning(f"Runtime '{runtime_identifier}' not found in runtime list for job '{job_metadata['name']}'")
+            
+            # V1 API: Check for runtime ID (legacy approach)
+            elif "runtime.id" in job_info_flatten or "runtime_id" in job_info_flatten:
                 runtime_id = job_info_flatten.get("runtime.id") or job_info_flatten.get("runtime_id")
                 runtime_obj = find_runtime(
                     runtime_list=runtime_list["runtimes"],
@@ -1117,7 +1140,7 @@ print("Please update the application script path in CML UI")
                         "default"
                     )
             else:
-                # Handle legacy engine
+                # Handle legacy engine (very old API)
                 kernel = job_info_flatten.get("kernel")
                 if kernel:
                     if bool(legacy_engine_runtime_constants.engine_to_runtime_map()):

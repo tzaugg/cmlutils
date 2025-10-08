@@ -207,79 +207,109 @@ def flatten_json_data(json_data):
 
 
 def get_best_runtime(json_list, edition, editor, kernel, short_version, full_version):
-    # Best match with all five criteria matching
+    """
+    Find the best matching runtime from a list.
+    Supports both V1 API (camelCase) and V2 API (snake_case) field names.
+    Progressively loosens matching criteria if exact match not found.
+    """
+    
+    # Helper function to get field value supporting both V1 and V2 API naming
+    def get_field(obj, v1_name, v2_name):
+        """Get field value, checking both V1 (camelCase) and V2 (snake_case) names"""
+        return obj.get(v1_name, obj.get(v2_name))
+    
+    def get_image_id(obj):
+        """Get image identifier, supporting both naming conventions"""
+        return get_field(obj, "imageIdentifier", "image_identifier")
+    
+    # Best match: all five criteria (kernel, edition, editor, short_version, full_version)
     for json_obj in json_list:
-        if (
-            "kernel" in json_obj
-            and "edition" in json_obj
-            and "editor" in json_obj
-            and "shortVersion" in json_obj
-            and "fullVersion" in json_obj
-        ):
-            if (
-                json_obj["kernel"] == kernel
-                and json_obj["edition"] == edition
-                and json_obj["editor"] == editor
-                and json_obj["shortVersion"] == short_version
-                and json_obj["fullVersion"] == full_version
-            ):
-                if "imageIdentifier" in json_obj:
-                    return json_obj["imageIdentifier"]
+        obj_kernel = json_obj.get("kernel")
+        obj_edition = json_obj.get("edition")
+        obj_editor = json_obj.get("editor")
+        obj_short_version = get_field(json_obj, "shortVersion", "short_version")
+        obj_full_version = get_field(json_obj, "fullVersion", "full_version")
+        
+        if all([obj_kernel, obj_edition, obj_editor, obj_short_version, obj_full_version]):
+            if (obj_kernel == kernel and obj_edition == edition and obj_editor == editor 
+                and obj_short_version == short_version and obj_full_version == full_version):
+                img_id = get_image_id(json_obj)
+                if img_id:
+                    return img_id
 
-    # Best match with four criteria matching
+    # Good match: four criteria (kernel, edition, editor, short_version) - ignore full_version
     for json_obj in json_list:
-        if (
-            "kernel" in json_obj
-            and "edition" in json_obj
-            and "editor" in json_obj
-            and "shortVersion" in json_obj
-        ):
-            if (
-                json_obj["kernel"] == kernel
-                and json_obj["edition"] == edition
-                and json_obj["editor"] == editor
-                and json_obj["shortVersion"] == short_version
-            ):
-                if "imageIdentifier" in json_obj:
-                    return json_obj["imageIdentifier"]
+        obj_kernel = json_obj.get("kernel")
+        obj_edition = json_obj.get("edition")
+        obj_editor = json_obj.get("editor")
+        obj_short_version = get_field(json_obj, "shortVersion", "short_version")
+        
+        if all([obj_kernel, obj_edition, obj_editor, obj_short_version]):
+            if (obj_kernel == kernel and obj_edition == edition and obj_editor == editor 
+                and obj_short_version == short_version):
+                img_id = get_image_id(json_obj)
+                if img_id:
+                    return img_id
 
-    # If not Atleast three criterias are matching
+    # Acceptable match: three criteria (kernel, edition, editor) - ignore versions
+    # This is the key fallback for different build versions!
     for json_obj in json_list:
-        if "kernel" in json_obj and "edition" in json_obj and "editor" in json_obj:
-            if (
-                json_obj["kernel"] == kernel
-                and json_obj["edition"] == edition
-                and json_obj["editor"] == editor
-            ):
-                if "imageIdentifier" in json_obj:
-                    return json_obj["imageIdentifier"]
+        obj_kernel = json_obj.get("kernel")
+        obj_edition = json_obj.get("edition")
+        obj_editor = json_obj.get("editor")
+        
+        if all([obj_kernel, obj_edition, obj_editor]):
+            # Normalize edition matching - "Standard" should match "Standard" or "Rsync"
+            # Rsync is essentially Standard + rsync capability
+            edition_match = (
+                obj_edition == edition or
+                (edition == "Standard" and obj_edition in ["Standard", "Rsync"])
+            )
+            
+            if obj_kernel == kernel and edition_match and obj_editor == editor:
+                img_id = get_image_id(json_obj)
+                if img_id:
+                    return img_id
 
-    # If not atleast two criteria kernel and editor are matching
+    # Minimal match: kernel and editor only
     for json_obj in json_list:
-        if "kernel" in json_obj and "edition" in json_obj:
-            if json_obj["kernel"] == kernel and json_obj["editor"] == editor:
-                if "imageIdentifier" in json_obj:
-                    return json_obj["imageIdentifier"]
+        obj_kernel = json_obj.get("kernel")
+        obj_editor = json_obj.get("editor")
+        
+        if obj_kernel and obj_editor:
+            if obj_kernel == kernel and obj_editor == editor:
+                img_id = get_image_id(json_obj)
+                if img_id:
+                    return img_id
 
-    # If not atleast kernel is matching
+    # Last resort: kernel only
     for json_obj in json_list:
-        if "kernel" in json_obj:
-            if json_obj["kernel"] == kernel:
-                if "imageIdentifier" in json_obj:
-                    return json_obj["imageIdentifier"]
+        obj_kernel = json_obj.get("kernel")
+        if obj_kernel and obj_kernel == kernel:
+            img_id = get_image_id(json_obj)
+            if img_id:
+                return img_id
 
     return None
 
 
 def find_runtime(runtime_list, runtime_id: int):
+    """
+    Find runtime by ID and return its properties.
+    Supports both V1 API (camelCase) and V2 API (snake_case) field names.
+    """
     for runtime in runtime_list:
         if "id" in runtime and runtime["id"] == runtime_id:
+            # Support both V1 (camelCase) and V2 (snake_case) field names
+            full_version = runtime.get("fullVersion", runtime.get("full_version"))
+            short_version = runtime.get("shortVersion", runtime.get("short_version"))
+            
             return {
                 "runtime_kernel": runtime["kernel"],
                 "runtime_edition": runtime["edition"],
                 "runtime_editor": runtime["editor"],
-                "runtime_fullversion": runtime["fullVersion"],
-                "runtime_shortversion": runtime["shortVersion"],
+                "runtime_fullversion": full_version,
+                "runtime_shortversion": short_version,
             }
     return None
 
