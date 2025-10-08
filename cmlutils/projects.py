@@ -516,24 +516,6 @@ class ProjectExporter(BaseWorkspaceInteractor):
         )
         return response.json().get("applications", [])
 
-    # Get CDSW model info using API v1
-    def get_model_infov1(self, model_id: str):
-        endpoint = ApiV1Endpoints.MODEL_INFO.value
-        json_data = {
-            "id": model_id,
-            "latestModelDeployment": True,
-            "latestModelBuild": True,
-        }
-        response = call_api_v1(
-            host=self.host,
-            endpoint=endpoint,
-            method="POST",
-            api_key=self.api_key,
-            json_data=json_data,
-            ca_path=self.ca_path,
-        )
-        return response.json()
-
     # Get CDSW model info using API v2
     def get_model_infov2(self, project_id: str, model_id: str):
         endpoint = Template(ApiV2Endpoints.BUILD_MODEL.value).substitute(
@@ -544,34 +526,6 @@ class ProjectExporter(BaseWorkspaceInteractor):
             endpoint=endpoint,
             method="GET",
             user_token=self.apiv2_key,
-            ca_path=self.ca_path,
-        )
-        return response.json()
-
-    # Get Job info using API v1
-    def get_job_infov1(self, job_id: int):
-        endpoint = Template(ApiV1Endpoints.JOB_INFO.value).substitute(
-            username=self.username, project_name=self.project_slug, job_id=job_id
-        )
-        response = call_api_v1(
-            host=self.host,
-            endpoint=endpoint,
-            method="GET",
-            api_key=self.api_key,
-            ca_path=self.ca_path,
-        )
-        return response.json()
-
-    # Get application info using API v1
-    def get_app_infov1(self, app_id: int):
-        endpoint = Template(ApiV1Endpoints.APP_INFO.value).substitute(
-            username=self.username, project_name=self.project_name, app_id=app_id
-        )
-        response = call_api_v1(
-            host=self.host,
-            endpoint=endpoint,
-            method="GET",
-            api_key=self.api_key,
             ca_path=self.ca_path,
         )
         return response.json()
