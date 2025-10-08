@@ -1954,12 +1954,25 @@ class ProjectImporter(BaseWorkspaceInteractor):
             "",
             "SUMMARY",
             "",
+            "Applications:",
             f"  Total Applications: {manifest['summary']['total_applications']}",
-            f"  Imported Successfully: {manifest['summary']['imported_successfully']}",
-            f"  Imported with Modifications: {manifest['summary']['imported_with_modifications']}",
-            f"  Imported with Fallback Runtime: {manifest['summary']['imported_with_fallback']}",
-            f"  Removed from Import: {manifest['summary']['removed_from_manifest']}",
-            f"  Skipped: {manifest['summary']['skipped']}",
+            f"  Imported Successfully: {manifest['summary'].get('apps_imported_successfully', manifest['summary'].get('imported_successfully', 0))}",
+            f"  Imported with Modifications: {manifest['summary'].get('apps_imported_with_modifications', manifest['summary'].get('imported_with_modifications', 0))}",
+            f"  Imported with Fallback Runtime: {manifest['summary'].get('apps_imported_with_fallback', manifest['summary'].get('imported_with_fallback', 0))}",
+            f"  Removed from Import: {manifest['summary'].get('apps_removed_from_manifest', manifest['summary'].get('removed_from_manifest', 0))}",
+            f"  Skipped: {manifest['summary'].get('apps_skipped', manifest['summary'].get('skipped', 0))}",
+            "",
+            "Models:",
+            f"  Total Models: {manifest['summary'].get('total_models', 0)}",
+            f"  Imported Successfully: {manifest['summary'].get('models_imported_successfully', 0)}",
+            f"  Created Without Build: {manifest['summary'].get('models_created_without_build', 0)}",
+            f"  Imported with Fallback Runtime: {manifest['summary'].get('models_imported_with_fallback', 0)}",
+            "",
+            "Jobs:",
+            f"  Total Jobs: {manifest['summary'].get('total_jobs', 0)}",
+            f"  Imported Successfully: {manifest['summary'].get('jobs_imported_successfully', 0)}",
+            f"  Created with Fallback Runtime: {manifest['summary'].get('jobs_created_with_fallback', 0)}",
+            f"  Skipped: {manifest['summary'].get('jobs_skipped', 0)}",
             "",
         ]
         
@@ -2059,6 +2072,103 @@ class ProjectImporter(BaseWorkspaceInteractor):
                     "",
                 ])
         
+        # Models created without build
+        if manifest.get("models_created_without_build"):
+            report_lines.extend([
+                "-"*80,
+                "",
+                "MODELS CREATED WITHOUT BUILD",
+                "",
+                "The following models were created but builds failed. Manual rebuild required:",
+                "",
+            ])
+            
+            for model in manifest["models_created_without_build"]:
+                report_lines.extend([
+                    f"Model: {model['name']}",
+                    "",
+                    f"  Runtime: {model.get('runtime', 'N/A')}",
+                    f"  Reason: {model['reason']}",
+                    f"  Action: {model['action']}",
+                    "",
+                    "  Steps to Rebuild:",
+                    f"  1. Go to CML UI -> Projects -> {manifest['target_project']} -> Models",
+                    f"  2. Select model: {model['name']}",
+                    "  3. Click 'New Build'",
+                    "  4. Select appropriate runtime and build",
+                    "",
+                ])
+        
+        # Models imported with fallback
+        if manifest.get("models_imported_with_fallback"):
+            report_lines.extend([
+                "-"*80,
+                "",
+                "MODELS USING FALLBACK RUNTIME",
+                "",
+                "The following models were imported with a fallback runtime:",
+                "",
+            ])
+            
+            for model in manifest["models_imported_with_fallback"]:
+                report_lines.extend([
+                    f"Model: {model['name']}",
+                    "",
+                    f"  Required Runtime: {model.get('required_runtime', 'N/A')}",
+                    f"  Fallback Runtime: {model.get('fallback_runtime', 'N/A')}",
+                    f"  Action: {model.get('action', 'Test functionality')}",
+                    "",
+                ])
+        
+        # Jobs created with fallback
+        if manifest.get("jobs_created_with_fallback"):
+            report_lines.extend([
+                "-"*80,
+                "",
+                "JOBS USING FALLBACK RUNTIME",
+                "",
+                "The following jobs were created with a fallback runtime:",
+                "",
+            ])
+            
+            for job in manifest["jobs_created_with_fallback"]:
+                report_lines.extend([
+                    f"Job: {job['name']}",
+                    "",
+                    f"  Required Runtime: {job.get('required_runtime', 'N/A')}",
+                    f"  Fallback Runtime: {job.get('fallback_runtime', 'N/A')}",
+                    f"  Action: {job.get('action', 'Test functionality')}",
+                    "",
+                ])
+        
+        # Jobs skipped
+        if manifest.get("jobs_skipped"):
+            report_lines.extend([
+                "-"*80,
+                "",
+                "JOBS SKIPPED",
+                "",
+                "The following jobs were skipped during import:",
+                "",
+            ])
+            
+            for job in manifest["jobs_skipped"]:
+                report_lines.extend([
+                    f"Job: {job['name']}",
+                    "",
+                    f"  Runtime: {job.get('runtime', 'N/A')}",
+                    f"  Reason: {job['reason']}",
+                    f"  Action: {job['action']}",
+                    "",
+                    "  Steps to Recreate:",
+                    f"  1. Go to CML UI -> Projects -> {manifest['target_project']} -> Jobs",
+                    "  2. Click 'New Job'",
+                    f"  3. Set name: {job['name']}",
+                    "  4. Configure job with appropriate runtime and settings",
+                    "  5. Save",
+                    "",
+                ])
+        
         # Recommendations
         if manifest.get("recommendations"):
             report_lines.extend([
@@ -2096,19 +2206,33 @@ class ProjectImporter(BaseWorkspaceInteractor):
             logging.warning(f"Failed to generate human-readable report: {e}")
     
     def _generate_manual_steps_manifest(self):
-        """Generate a manifest of applications that need manual attention"""
+        """Generate a manifest of applications and models that need manual attention"""
         from datetime import datetime
         
         # Check if there are any applications needing attention
-        total_needing_attention = (
+        apps_needing_attention = (
             len(self.import_tracking["apps_removed_from_manifest"]) +
             len(self.import_tracking["apps_skipped"]) +
             len(self.import_tracking["apps_imported_with_fallback"]) +
             len(self.import_tracking.get("apps_imported_with_modifications", []))
         )
         
+        # Check if there are any models needing attention
+        models_needing_attention = (
+            len(self.import_tracking.get("models_created_without_build", [])) +
+            len(self.import_tracking.get("models_imported_with_fallback", []))
+        )
+        
+        # Check if there are any jobs needing attention
+        jobs_needing_attention = (
+            len(self.import_tracking.get("jobs_created_with_fallback", [])) +
+            len(self.import_tracking.get("jobs_skipped", []))
+        )
+        
+        total_needing_attention = apps_needing_attention + models_needing_attention + jobs_needing_attention
+        
         if total_needing_attention == 0:
-            logging.info("✅ All applications imported successfully, no manual steps required")
+            logging.info("✅ All applications, models, and jobs imported successfully, no manual steps required")
             return
         
         # Create manifest
@@ -2118,23 +2242,42 @@ class ProjectImporter(BaseWorkspaceInteractor):
             "target_project": self.project_name,
             "summary": {
                 "total_applications": (
-                    len(self.import_tracking["apps_imported_successfully"]) + total_needing_attention
+                    len(self.import_tracking["apps_imported_successfully"]) + apps_needing_attention
                 ),
-                "imported_successfully": len(self.import_tracking["apps_imported_successfully"]),
-                "imported_with_modifications": len(self.import_tracking.get("apps_imported_with_modifications", [])),
-                "imported_with_fallback": len(self.import_tracking["apps_imported_with_fallback"]),
-                "removed_from_manifest": len(self.import_tracking["apps_removed_from_manifest"]),
-                "skipped": len(self.import_tracking["apps_skipped"])
+                "apps_imported_successfully": len(self.import_tracking["apps_imported_successfully"]),
+                "apps_imported_with_modifications": len(self.import_tracking.get("apps_imported_with_modifications", [])),
+                "apps_imported_with_fallback": len(self.import_tracking["apps_imported_with_fallback"]),
+                "apps_removed_from_manifest": len(self.import_tracking["apps_removed_from_manifest"]),
+                "apps_skipped": len(self.import_tracking["apps_skipped"]),
+                "total_models": (
+                    len(self.import_tracking.get("models_imported_successfully", [])) + models_needing_attention
+                ),
+                "models_imported_successfully": len(self.import_tracking.get("models_imported_successfully", [])),
+                "models_created_without_build": len(self.import_tracking.get("models_created_without_build", [])),
+                "models_imported_with_fallback": len(self.import_tracking.get("models_imported_with_fallback", [])),
+                "total_jobs": (
+                    len(self.import_tracking.get("jobs_imported_successfully", [])) + jobs_needing_attention
+                ),
+                "jobs_imported_successfully": len(self.import_tracking.get("jobs_imported_successfully", [])),
+                "jobs_created_with_fallback": len(self.import_tracking.get("jobs_created_with_fallback", [])),
+                "jobs_skipped": len(self.import_tracking.get("jobs_skipped", []))
             },
             "imported_with_modifications": self.import_tracking.get("apps_imported_with_modifications", []),
             "removed_from_manifest": self.import_tracking["apps_removed_from_manifest"],
             "skipped_applications": self.import_tracking["apps_skipped"],
             "imported_with_fallback": self.import_tracking["apps_imported_with_fallback"],
+            "models_created_without_build": self.import_tracking.get("models_created_without_build", []),
+            "models_imported_with_fallback": self.import_tracking.get("models_imported_with_fallback", []),
+            "jobs_created_with_fallback": self.import_tracking.get("jobs_created_with_fallback", []),
+            "jobs_skipped": self.import_tracking.get("jobs_skipped", []),
             "recommendations": [
-                "Review applications imported with modifications",
-                "Update script paths for applications imported without script fields",
+                "Review applications imported with modifications and update script paths",
                 "Test applications imported with fallback runtimes",
                 "Manually recreate applications that were removed",
+                "Rebuild models that were created without builds",
+                "Test models imported with fallback runtimes",
+                "Test jobs imported with fallback runtimes",
+                "Manually recreate jobs that were skipped",
                 "Install missing runtimes if available"
             ]
         }
@@ -2151,10 +2294,17 @@ class ProjectImporter(BaseWorkspaceInteractor):
         self._generate_human_readable_report(manifest, report_path)
         
         logging.info(f"\n📋 Manual Steps Required:")
-        logging.info(f"  • Imported with modifications: {manifest['summary']['imported_with_modifications']}")
-        logging.info(f"  • Removed from manifest: {manifest['summary']['removed_from_manifest']}")
-        logging.info(f"  • Skipped: {manifest['summary']['skipped']}")
-        logging.info(f"  • Imported with fallback: {manifest['summary']['imported_with_fallback']}")
+        logging.info(f"  Applications:")
+        logging.info(f"    • Imported with modifications: {manifest['summary']['apps_imported_with_modifications']}")
+        logging.info(f"    • Removed from manifest: {manifest['summary']['apps_removed_from_manifest']}")
+        logging.info(f"    • Skipped: {manifest['summary']['apps_skipped']}")
+        logging.info(f"    • Imported with fallback: {manifest['summary']['apps_imported_with_fallback']}")
+        logging.info(f"  Models:")
+        logging.info(f"    • Created without build: {manifest['summary']['models_created_without_build']}")
+        logging.info(f"    • Imported with fallback: {manifest['summary']['models_imported_with_fallback']}")
+        logging.info(f"  Jobs:")
+        logging.info(f"    • Created with fallback: {manifest['summary']['jobs_created_with_fallback']}")
+        logging.info(f"    • Skipped: {manifest['summary']['jobs_skipped']}")
         logging.info(f"  📁 JSON manifest: {manifest_path}")
         logging.info(f"  📄 Human-readable report: {report_path}")
 
@@ -2201,16 +2351,57 @@ class ProjectImporter(BaseWorkspaceInteractor):
             if verbose:
                 logging.debug("Project configured with runtimes: %s", proj_with_runtime)
             
+            # Initialize model tracking
+            if "models_imported_successfully" not in self.import_tracking:
+                self.import_tracking["models_imported_successfully"] = []
+            if "models_created_without_build" not in self.import_tracking:
+                self.import_tracking["models_created_without_build"] = []
+            if "models_imported_with_fallback" not in self.import_tracking:
+                self.import_tracking["models_imported_with_fallback"] = []
+            
             model_metadata_list = read_json_file(models_metadata_filepath)
             if model_metadata_list != None:
                 if verbose:
                     logging.debug("Found %d models to import", len(model_metadata_list))
                 
                 for model_metadata in model_metadata_list:
+                    model_name = model_metadata.get("name", "unknown")
+                    
                     if not self.check_model_exist(
                         model_name=model_metadata["name"], proj_id=project_id
                     ):
                         model_metadata["project_id"] = project_id
+                        required_runtime = model_metadata.get("runtime_identifier", None)
+                        runtime_available = False
+                        used_fallback = False
+                        
+                        # Check if required runtime exists in target
+                        if required_runtime and proj_with_runtime:
+                            runtime_available = any(
+                                r.get("image_identifier") == required_runtime
+                                for r in runtime_list.get("runtimes", [])
+                            )
+                            
+                            if not runtime_available:
+                                logging.warning(
+                                    f"⚠️  Model '{model_name}' requires runtime '{required_runtime}' which is not available"
+                                )
+                                # Try to find fallback runtime
+                                if all(k in model_metadata for k in ["runtime_edition", "runtime_editor", "runtime_kernel"]):
+                                    fallback_runtime = get_best_runtime(
+                                        runtime_list["runtimes"],
+                                        model_metadata["runtime_edition"],
+                                        model_metadata["runtime_editor"],
+                                        model_metadata["runtime_kernel"],
+                                        model_metadata.get("runtime_shortversion", ""),
+                                        model_metadata.get("runtime_fullversion", ""),
+                                    )
+                                    if fallback_runtime:
+                                        logging.info(f"Using fallback runtime for model '{model_name}': {fallback_runtime}")
+                                        model_metadata["runtime_identifier"] = fallback_runtime
+                                        used_fallback = True
+                                        runtime_available = True
+                        
                         if (
                             not "runtime_identifier" in model_metadata
                             and proj_with_runtime
@@ -2232,37 +2423,97 @@ class ProjectImporter(BaseWorkspaceInteractor):
                                     "Couldn't locate runtime identifier for model %s",
                                     model_metadata["name"],
                                 )
-                                logging.info(
-                                    "Applying default runtime %s",
-                                    legacy_engine_runtime_constants.engine_to_runtime_map().get(
-                                        "default"
-                                    ),
-                                )
-                                model_metadata[
-                                    "runtime_identifier"
-                                ] = legacy_engine_runtime_constants.engine_to_runtime_map().get(
-                                    "default"
-                                )
+                                # Try first available runtime
+                                if runtime_list.get("runtimes"):
+                                    first_runtime = runtime_list["runtimes"][0].get("image_identifier")
+                                    if first_runtime:
+                                        logging.info(f"Using first available runtime for model '{model_name}': {first_runtime}")
+                                        model_metadata["runtime_identifier"] = first_runtime
+                                        used_fallback = True
+                                    else:
+                                        logging.warning(f"No runtimes available, skipping build for model '{model_name}'")
+                                        model_metadata["runtime_identifier"] = None
+                        
                         if verbose:
                             logging.debug("Creating model: %s", model_metadata["name"])
                         
-                        model_id = self.create_model_v2(
-                            proj_id=project_id, model_metadata=model_metadata
-                        )
+                        try:
+                            model_id = self.create_model_v2(
+                                proj_id=project_id, model_metadata=model_metadata
+                            )
+                            
+                            if verbose:
+                                logging.debug("Created model with ID: %s, attempting build...", model_id)
+                            
+                            # Try to create build, but don't crash if it fails
+                            build_created = False
+                            if model_metadata.get("runtime_identifier"):
+                                try:
+                                    self.create_model_build_v2(
+                                        proj_id=project_id,
+                                        model_id=model_id,
+                                        model_metadata=model_metadata,
+                                    )
+                                    build_created = True
+                                    
+                                    if used_fallback:
+                                        logging.info(f"✅ Model '{model_name}' created with fallback runtime")
+                                        self.import_tracking["models_imported_with_fallback"].append({
+                                            "name": model_name,
+                                            "required_runtime": required_runtime,
+                                            "fallback_runtime": model_metadata["runtime_identifier"],
+                                            "action": "Verify model functionality with the fallback runtime"
+                                        })
+                                    else:
+                                        logging.info(f"✅ Model '{model_name}' migrated successfully")
+                                        self.import_tracking["models_imported_successfully"].append({
+                                            "name": model_name,
+                                            "runtime": model_metadata.get("runtime_identifier", "default")
+                                        })
+                                
+                                except HTTPError as e:
+                                    error_message = str(e)
+                                    if hasattr(e, 'response') and e.response is not None:
+                                        try:
+                                            error_json = e.response.json()
+                                            error_message = error_json.get("message") or error_json.get("error") or str(e)
+                                        except:
+                                            pass
+                                    
+                                    logging.warning(f"⚠️  Failed to create build for model '{model_name}': {error_message}")
+                                    logging.info(f"Model '{model_name}' created but without build - manual intervention required")
+                                    self.import_tracking["models_created_without_build"].append({
+                                        "name": model_name,
+                                        "runtime": required_runtime or "unknown",
+                                        "reason": f"Build creation failed: {error_message}",
+                                        "action": "Manually rebuild the model in CML UI with an appropriate runtime"
+                                    })
+                            else:
+                                logging.info(f"⚠️  Model '{model_name}' created without build (no runtime available)")
+                                self.import_tracking["models_created_without_build"].append({
+                                    "name": model_name,
+                                    "runtime": required_runtime or "unknown",
+                                    "reason": "No suitable runtime available in target workspace",
+                                    "action": "Manually rebuild the model in CML UI after adding the required runtime"
+                                })
                         
-                        if verbose:
-                            logging.debug("Created model with ID: %s, creating build...", model_id)
-                        
-                        self.create_model_build_v2(
-                            proj_id=project_id,
-                            model_id=model_id,
-                            model_metadata=model_metadata,
-                        )
-                        
-                        logging.info(
-                            "Model- %s has been migrated successfully",
-                            model_metadata["name"],
-                        )
+                        except HTTPError as e:
+                            error_message = str(e)
+                            if hasattr(e, 'response') and e.response is not None:
+                                try:
+                                    error_json = e.response.json()
+                                    error_message = error_json.get("message") or error_json.get("error") or str(e)
+                                except:
+                                    pass
+                            
+                            logging.error(f"Failed to create model '{model_name}': {error_message}")
+                            self.import_tracking["models_created_without_build"].append({
+                                "name": model_name,
+                                "runtime": required_runtime or "unknown",
+                                "reason": f"Model creation failed: {error_message}",
+                                "action": "Manually recreate the model in CML UI"
+                            })
+                            continue
                     else:
                         logging.info(
                             "Skipping the already existing model- %s",
@@ -2276,7 +2527,9 @@ class ProjectImporter(BaseWorkspaceInteractor):
         except Exception as e:
             logging.error("Model migration failed")
             logging.error(f"Error: {e}")
-            raise
+            # Don't raise - log the error and continue with jobs
+            logging.info("Continuing with remaining imports despite model errors...")
+            return
 
     def create_stoppped_applications(self, project_id: str, app_metadata_filepath: str):
         try:
@@ -2525,11 +2778,21 @@ class ProjectImporter(BaseWorkspaceInteractor):
                 ca_path=self.ca_path,
                 project_slug=self.project_slug,
             )
+            
+            # Initialize job tracking
+            if "jobs_imported_successfully" not in self.import_tracking:
+                self.import_tracking["jobs_imported_successfully"] = []
+            if "jobs_created_with_fallback" not in self.import_tracking:
+                self.import_tracking["jobs_created_with_fallback"] = []
+            if "jobs_skipped" not in self.import_tracking:
+                self.import_tracking["jobs_skipped"] = []
+            
             job_metadata_list = read_json_file(job_metadata_filepath)
             src_tgt_job_mapping = {}
             # Create job in target CML workspace.
             if job_metadata_list != None:
                 for job_metadata in job_metadata_list:
+                    job_name = job_metadata.get("name", "unknown")
                     target_job_id = self.check_job_exist(
                         job_name=job_metadata["name"],
                         script=job_metadata["script"],
@@ -2538,6 +2801,37 @@ class ProjectImporter(BaseWorkspaceInteractor):
                     if target_job_id == None:
                         job_metadata["project_id"] = project_id
                         job_metadata["paused"] = True
+                        required_runtime = job_metadata.get("runtime_identifier", None)
+                        runtime_available = False
+                        used_fallback = False
+                        
+                        # Check if required runtime exists in target
+                        if required_runtime and proj_with_runtime:
+                            runtime_available = any(
+                                r.get("image_identifier") == required_runtime
+                                for r in runtime_list.get("runtimes", [])
+                            )
+                            
+                            if not runtime_available:
+                                logging.warning(
+                                    f"⚠️  Job '{job_name}' requires runtime '{required_runtime}' which is not available"
+                                )
+                                # Try to find fallback runtime
+                                if all(k in job_metadata for k in ["runtime_edition", "runtime_editor", "runtime_kernel"]):
+                                    fallback_runtime = get_best_runtime(
+                                        runtime_list["runtimes"],
+                                        job_metadata["runtime_edition"],
+                                        job_metadata["runtime_editor"],
+                                        job_metadata["runtime_kernel"],
+                                        job_metadata.get("runtime_shortversion", ""),
+                                        job_metadata.get("runtime_fullversion", ""),
+                                    )
+                                    if fallback_runtime:
+                                        logging.info(f"Using fallback runtime for job '{job_name}': {fallback_runtime}")
+                                        job_metadata["runtime_identifier"] = fallback_runtime
+                                        used_fallback = True
+                                        runtime_available = True
+                        
                         if spark_runtime_id != None:
                             job_metadata["runtime_addon_identifiers"] = [
                                 spark_runtime_id
@@ -2557,25 +2851,68 @@ class ProjectImporter(BaseWorkspaceInteractor):
                             if runtime_identifier != None:
                                 job_metadata["runtime_identifier"] = runtime_identifier
                             else:
-                                job_metadata[
-                                    "runtime_identifier"
-                                ] = legacy_engine_runtime_constants.engine_to_runtime_map().get(
-                                    "default"
-                                )
-                        target_job_id = self.create_job_v2(
-                            proj_id=project_id, job_metadata=job_metadata
-                        )
-                        logging.info(
-                            "Job- %s has been migrated successfully",
-                            job_metadata["name"],
-                        )
+                                # Try first available runtime
+                                if runtime_list.get("runtimes"):
+                                    first_runtime = runtime_list["runtimes"][0].get("image_identifier")
+                                    if first_runtime:
+                                        logging.info(f"Using first available runtime for job '{job_name}': {first_runtime}")
+                                        job_metadata["runtime_identifier"] = first_runtime
+                                        used_fallback = True
+                        
+                        # Fix environment field - API expects JSON object, not string
+                        if "environment" in job_metadata and isinstance(job_metadata["environment"], str):
+                            try:
+                                job_metadata["environment"] = json.loads(job_metadata["environment"])
+                            except json.JSONDecodeError:
+                                logging.warning(f"Could not parse environment for job {job_metadata['name']}, setting to empty dict")
+                                job_metadata["environment"] = {}
+                        
+                        try:
+                            target_job_id = self.create_job_v2(
+                                proj_id=project_id, job_metadata=job_metadata
+                            )
+                            
+                            if used_fallback:
+                                logging.info(f"✅ Job '{job_name}' created with fallback runtime")
+                                self.import_tracking["jobs_created_with_fallback"].append({
+                                    "name": job_name,
+                                    "required_runtime": required_runtime,
+                                    "fallback_runtime": job_metadata.get("runtime_identifier"),
+                                    "action": "Verify job functionality with the fallback runtime"
+                                })
+                            else:
+                                logging.info(f"✅ Job '{job_name}' migrated successfully")
+                                self.import_tracking["jobs_imported_successfully"].append({
+                                    "name": job_name,
+                                    "runtime": job_metadata.get("runtime_identifier", "default")
+                                })
+                        
+                        except HTTPError as e:
+                            error_message = str(e)
+                            if hasattr(e, 'response') and e.response is not None:
+                                try:
+                                    error_json = e.response.json()
+                                    error_message = error_json.get("message") or error_json.get("error") or str(e)
+                                except:
+                                    pass
+                            
+                            logging.error(f"Failed to create job '{job_name}': {error_message}")
+                            self.import_tracking["jobs_skipped"].append({
+                                "name": job_name,
+                                "runtime": required_runtime or "unknown",
+                                "reason": f"Job creation failed: {error_message}",
+                                "action": "Manually recreate the job in CML UI"
+                            })
+                            target_job_id = None
+                            continue
                     else:
                         logging.info(
                             "Skipping the already existing job- %s",
                             job_metadata["name"],
                         )
 
-                    src_tgt_job_mapping[job_metadata["source_jobid"]] = target_job_id
+                    if target_job_id:
+                        src_tgt_job_mapping[job_metadata["source_jobid"]] = target_job_id
 
                 # Update job dependency
                 for job_metadata in job_metadata_list:
@@ -2599,7 +2936,9 @@ class ProjectImporter(BaseWorkspaceInteractor):
         except Exception as e:
             logging.error("Job migration failed")
             logging.error(f"Error: {e}")
-            raise
+            # Don't raise - log the error and continue
+            logging.info("Continuing despite job errors...")
+            return
 
     def get_project_infov2(self, proj_id: str):
         endpoint = Template(ApiV2Endpoints.GET_PROJECT.value).substitute(
