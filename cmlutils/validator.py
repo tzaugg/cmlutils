@@ -409,13 +409,8 @@ def initialize_import_validators(
             project_name=project_name,
             top_level_directory=top_level_directory,
         ),
-        UserNameImportValidator(
-            host=host,
-            username=username,
-            apiv1_key=apiv1_key,
-            project_name=project_name,
-            ca_path=ca_path,
-        ),
+        # UserNameImportValidator removed - V2 API will handle auth errors gracefully
+        # This avoids V1 API dependency and SSL issues with enterprise certificates
         RsyncRuntimeAddonExistsImportValidator(
             host=host,
             username=username,
@@ -437,13 +432,8 @@ def initialize_export_validators(
 ) -> List[ExportValidators]:
     return [
         TopLevelDirectoryValidator(top_level_directory=top_level_directory),
-        UsernameValidator(
-            host=host,
-            username=username,
-            apiv1_key=apiv1_key,
-            project_name=project_name,
-            ca_path=ca_path,
-        ),
+        # UsernameValidator removed - V2 API will handle auth errors gracefully
+        # This avoids V1 API dependency and SSL issues with enterprise certificates
         ProjectBelongsToUserValidator(
             host=host,
             username=username,
