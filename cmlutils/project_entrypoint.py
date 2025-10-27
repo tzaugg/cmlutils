@@ -82,16 +82,28 @@ def _read_config_file(file_path: str, project_name: str):
                 print("Key %s is missing from config file." % (key))
                 raise
         
-        # Try apiv2_key first (preferred), fallback to apiv1_key for backwards compatibility
+        # Read both API keys independently (at least one must be present)
+        apiv1_key = None
+        apiv2_key = None
+        
         try:
-            api_key = config.get(project_name, API_V2_KEY)
+            apiv1_key = config.get(project_name, API_V1_KEY)
         except NoOptionError:
-            try:
-                api_key = config.get(project_name, API_V1_KEY)
-            except NoOptionError:
-                print("Key %s or %s is missing from config file." % (API_V2_KEY, API_V1_KEY))
-                raise
-        output_config[API_V1_KEY] = api_key  # Store as API_V1_KEY for backwards compat with rest of code
+            pass  # V1 key is optional
+        
+        try:
+            apiv2_key = config.get(project_name, API_V2_KEY)
+        except NoOptionError:
+            pass  # V2 key is optional
+        
+        # At least one key must be provided
+        if not apiv1_key and not apiv2_key:
+            print("Error: Must provide either %s or %s (or both) in config file." % (API_V1_KEY, API_V2_KEY))
+            raise NoOptionError(API_V1_KEY, project_name)
+        
+        # Store both keys (may be None)
+        output_config[API_V1_KEY] = apiv1_key
+        output_config[API_V2_KEY] = apiv2_key
         
         output_config[CA_PATH_KEY] = config.get(project_name, CA_PATH_KEY, fallback="")
         return output_config
@@ -129,6 +141,7 @@ def project_export_cmd(project_name, verbose):
     username = config[USERNAME_KEY]
     url = config[URL_KEY]
     apiv1_key = config[API_V1_KEY]
+    apiv2_key = config[API_V2_KEY]
     output_dir = config[OUTPUT_DIR_KEY]
     ca_path = config[CA_PATH_KEY]
 
@@ -151,6 +164,7 @@ def project_export_cmd(project_name, verbose):
             ca_path=ca_path,
             project_slug=project_name,
             owner_type="",
+            apiv2_key=apiv2_key,
         )
         creator_username, project_slug, owner_type = pobj.get_creator_username()
         if creator_username is None:
@@ -194,6 +208,7 @@ def project_export_cmd(project_name, verbose):
             ca_path=ca_path,
             project_slug=project_slug,
             owner_type=owner_type,
+            apiv2_key=apiv2_key,
         )
         start_time = time.time()
         pexport.transfer_project_files(log_filedir=log_filedir)
@@ -258,6 +273,7 @@ def project_import_cmd(project_name, verify, verbose):
     username = config[USERNAME_KEY]
     url = config[URL_KEY]
     apiv1_key = config[API_V1_KEY]
+    apiv2_key = config[API_V2_KEY]
     source_directory = config[SOURCE_DIR_KEY]
     output_directory = config[OUTPUT_DIR_KEY]
     ca_path = config[CA_PATH_KEY]
@@ -277,6 +293,7 @@ def project_import_cmd(project_name, verify, verbose):
         top_level_dir=source_directory,
         ca_path=ca_path,
         project_slug=project_name,
+        apiv2_key=apiv2_key,
     )
     logging.info("Started importing project: %s", project_name)
     try:
@@ -333,6 +350,7 @@ def project_import_cmd(project_name, verify, verbose):
             top_level_dir=source_directory,
             ca_path=ca_path,
             project_slug=project_slug,
+            apiv2_key=apiv2_key,
         )
         start_time = time.time()
         if verify:
@@ -399,6 +417,7 @@ def project_import_cmd(project_name, verify, verbose):
             export_username = config[USERNAME_KEY]
             export_url = config[URL_KEY]
             export_apiv1_key = config[API_V1_KEY]
+            export_apiv2_key = config[API_V2_KEY]
             output_dir = config[OUTPUT_DIR_KEY]
             ca_path = config[CA_PATH_KEY]
 
@@ -422,6 +441,7 @@ def project_import_cmd(project_name, verify, verbose):
                     ca_path=export_ca_path,
                     project_slug=project_name,
                     owner_type="",
+                    apiv2_key=export_apiv2_key,
                 )
                 (
                     export_creator_username,
@@ -469,6 +489,7 @@ def project_import_cmd(project_name, verify, verbose):
                     ca_path=export_ca_path,
                     project_slug=export_project_slug,
                     owner_type=export_owner_type,
+                    apiv2_key=export_apiv2_key,
                 )
                 (
                     exported_proj_data,
@@ -664,6 +685,7 @@ def project_verify_cmd(project_name, verbose):
     export_username = config[USERNAME_KEY]
     export_url = config[URL_KEY]
     export_apiv1_key = config[API_V1_KEY]
+    export_apiv2_key = config[API_V2_KEY]
     output_dir = config[OUTPUT_DIR_KEY]
     ca_path = config[CA_PATH_KEY]
 
@@ -692,6 +714,7 @@ def project_verify_cmd(project_name, verbose):
             ca_path=export_ca_path,
             project_slug=project_name,
             owner_type="",
+            apiv2_key=export_apiv2_key,
         )
         (
             export_creator_username,
@@ -739,6 +762,7 @@ def project_verify_cmd(project_name, verbose):
             ca_path=export_ca_path,
             project_slug=export_project_slug,
             owner_type=export_owner_type,
+            apiv2_key=export_apiv2_key,
         )
         (
             exported_proj_data,
@@ -759,6 +783,7 @@ def project_verify_cmd(project_name, verbose):
         import_username = import_config[USERNAME_KEY]
         import_url = import_config[URL_KEY]
         import_apiv1_key = import_config[API_V1_KEY]
+        import_apiv2_key = import_config[API_V2_KEY]
         local_directory = import_config[OUTPUT_DIR_KEY]
         ca_path = import_config[CA_PATH_KEY]
         import_local_directory = get_absolute_path(local_directory)
@@ -771,6 +796,7 @@ def project_verify_cmd(project_name, verbose):
             top_level_dir=import_local_directory,
             ca_path=import_ca_path,
             project_slug=project_name,
+            apiv2_key=import_apiv2_key,
         )
         logging.info("Started Verifying imported project: %s", project_name)
         try:
@@ -820,6 +846,7 @@ def project_verify_cmd(project_name, verbose):
                 top_level_dir=import_local_directory,
                 ca_path=import_ca_path,
                 project_slug=import_project_slug,
+                apiv2_key=import_apiv2_key,
             )
 
             (
@@ -1016,6 +1043,7 @@ def populate_engine_runtimes_mapping():
     username = config[USERNAME_KEY]
     url = config[URL_KEY]
     apiv1_key = config[API_V1_KEY]
+    apiv2_key = config[API_V2_KEY]
     local_directory = config[OUTPUT_DIR_KEY]
     ca_path = config[CA_PATH_KEY]
 
@@ -1033,6 +1061,7 @@ def populate_engine_runtimes_mapping():
         top_level_dir=local_directory,
         ca_path=ca_path,
         project_slug=project_name,
+        apiv2_key=apiv2_key,
     )
 
     page_token = ""

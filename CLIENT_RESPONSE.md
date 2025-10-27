@@ -45,19 +45,24 @@ Choose one of these methods:
 
 Edit: `~/.cmlutils/import-config.ini`
 
-Add or update the `ca_path` line in your project section:
+Add or update the config with **both API keys** and the `ca_path`:
 
 ```ini
 [cdv]
 url=https://gis.apps.pvcbeta.bankofamerica.com
 username=nbe226r
-apiv2_key=<your_api_key_here>
+apiv1_key=<your_v1_api_key>
+apiv2_key=<your_v2_api_key>
 source_dir=/path/to/your/cmlutils-exports
 output_dir=/path/to/your/import-logs
 ca_path=/path/to/your/enterprise-ca-bundle.crt
 ```
 
-**Important**: Replace `/path/to/your/enterprise-ca-bundle.crt` with the actual path to where you saved the certificate file.
+**Important Notes**:
+- **You need BOTH API keys** (`apiv1_key` and `apiv2_key`) because CML has separate keys for V1 and V2 APIs
+- Get V1 key from CML: Profile → API Keys → Legacy API Key (V1)
+- Get V2 key from CML: Profile → API Keys → API Key (V2)
+- Replace `/path/to/your/enterprise-ca-bundle.crt` with the actual path to your certificate
 
 **3. Update your export config too**
 
@@ -67,7 +72,8 @@ If you're also exporting, update: `~/.cmlutils/export-config.ini`
 [cdv]
 url=https://gis.apps.pvcbeta.bankofamerica.com
 username=nbe226r
-apiv2_key=<your_api_key_here>
+apiv1_key=<your_v1_api_key>
+apiv2_key=<your_v2_api_key>
 output_dir=/path/to/your/cmlutils-exports
 ca_path=/path/to/your/enterprise-ca-bundle.crt
 ```
@@ -95,19 +101,28 @@ pip install -e .
 
 ## Why Was It Using V1 API?
 
-The validator was checking if the username exists using the V1 endpoint `/api/v1/users/$username`. This validation was redundant because:
-- The V2 API already validates authentication
-- If the user doesn't exist or the API key is wrong, you'll get a clear error message
-- It was causing SSL issues with enterprise certificates
+The tool was originally designed to only use V1 API keys and generate V2 keys from them. This doesn't work with modern CML deployments where:
+- **V1 and V2 API keys are separate and different**
+- You can't use a V2 key to call V1 endpoints
+- You can't generate one from the other
 
-**This is now fixed** in the latest version.
+The validator was also checking if the username exists using the V1 endpoint `/api/v1/users/$username`, causing SSL errors with enterprise certificates.
+
+**This is now fixed** in the latest version:
+- ✅ Supports both V1 and V2 API keys independently
+- ✅ Uses the right key for the right API version
+- ✅ Removed redundant V1 user validation
+- ✅ Gracefully handles missing V1 key (some checks will be skipped)
 
 ## Summary of What You Need to Do
 
-1. ✅ **Pull latest code**: `git pull origin main` (already has the V1 API fix)
-2. ✅ **Get your CA certificate** from IT/Security team
-3. ✅ **Add `ca_path=/path/to/cert.crt`** to your config files
-4. ✅ **Try import again**
+1. ✅ **Pull latest code**: `git pull origin main` (includes V1/V2 API fix)
+2. ✅ **Get BOTH API keys from CML**:
+   - V1 API Key: Profile → API Keys → Legacy API Key
+   - V2 API Key: Profile → API Keys → API Key
+3. ✅ **Get your CA certificate** from IT/Security team
+4. ✅ **Update config files** with `apiv1_key`, `apiv2_key`, and `ca_path`
+5. ✅ **Try import again**
 
 ## Testing Without CA Certificate (Not Recommended)
 

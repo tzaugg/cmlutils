@@ -143,6 +143,15 @@ class RsyncRuntimeAddonExistsImportValidator(ImportValidators):
         self.ca_path = ca_path
 
     def validate(self) -> ValidationResponse:
+        # Skip validation if no V1 API key (rsync check requires V1 API)
+        if not self.apiv1_key:
+            logging.info("Skipping rsync validation - V1 API key not configured")
+            return ValidationResponse(
+                validation_name=self.validation_name,
+                validation_msg="validation skipped (no V1 API key)",
+                validation_status=ValidationResponseStatus.SKIPPED,
+            )
+        
         rsync_enabled_runtime_id = -1
         rsync_enabled_runtime_id = get_rsync_enabled_runtime_id(
             host=self.host, api_key=self.apiv1_key, ca_path=self.ca_path
@@ -360,6 +369,15 @@ class RsyncRuntimeAddonExistsExportValidator(ExportValidators):
         self.project_slug = project_slug
 
     def validate(self) -> ValidationResponse:
+        # Skip validation if no V1 API key (rsync check requires V1 API)
+        if not self.apiv1_key:
+            logging.info("Skipping rsync validation - V1 API key not configured")
+            return ValidationResponse(
+                validation_name=self.validation_name,
+                validation_msg="validation skipped (no V1 API key)",
+                validation_status=ValidationResponseStatus.SKIPPED,
+            )
+        
         rsync_enabled_runtime_id = -1
         if is_project_configured_with_runtimes(
             host=self.host,
