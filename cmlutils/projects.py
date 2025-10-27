@@ -344,13 +344,14 @@ class ProjectExporter(BaseWorkspaceInteractor):
         ca_path: str,
         project_slug: str,
         owner_type: str,
+        apiv2_key: str = None,
     ) -> None:
         self._ssh_subprocess = None
         self.top_level_dir = top_level_dir
         self.project_id = None
         self.owner_type = owner_type
         self._original_owner_username = None  # Cache for owner restoration
-        super().__init__(host, username, project_name, api_key, ca_path, project_slug)
+        super().__init__(host, username, project_name, api_key, ca_path, project_slug, apiv2_key)
         self.metrics_data = dict()
 
     # Get CDSW project info using API v2
@@ -1224,12 +1225,13 @@ class ProjectImporter(BaseWorkspaceInteractor):
         top_level_dir: str,
         ca_path: str,
         project_slug: str,
+        apiv2_key: str = None,
     ) -> None:
         self._ssh_subprocess = None
         self.top_level_dir = top_level_dir
         self.project_id = None  # Will be populated from API
         self._original_owner_username = None  # Cache for owner restoration
-        super().__init__(host, username, project_name, api_key, ca_path, project_slug)
+        super().__init__(host, username, project_name, api_key, ca_path, project_slug, apiv2_key)
         self.metrics_data = dict()
         # Track import outcomes for applications
         self.import_tracking = {
